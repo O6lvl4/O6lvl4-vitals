@@ -58,6 +58,7 @@ vitals init                  Initialize data/ and rules/ directories
 vitals log <subcmd> [args]   Log a data point (see `vitals log help`)
 vitals show [date]           Show logged data for date (default: today)
 vitals check [date]          Evaluate all rules against data
+vitals report [--month]      Markdown compliance report for the window (7d / 30d)
 vitals rules                 List all loaded rules
 vitals help                  Show this message
 ```

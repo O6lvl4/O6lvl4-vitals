@@ -26,12 +26,13 @@ effect fn main() -> Unit = {
   let cmd = list.get(args, 0) |> option.unwrap_or("help")
   let rest = list.drop(args, 1)
   match cmd {
-    "init"  => cmd_init(),
-    "log"   => cmd_log(rest),
-    "show"  => cmd_show(rest),
-    "check" => cmd_check(rest),
-    "rules" => cmd_rules(),
-    "help"  => print_help(),
+    "init"   => cmd_init(),
+    "log"    => cmd_log(rest),
+    "show"   => cmd_show(rest),
+    "check"  => cmd_check(rest),
+    "report" => cmd_report(rest),
+    "rules"  => cmd_rules(),
+    "help"   => print_help(),
     _ => {
       println("Unknown command: " + cmd)
       println("")
@@ -44,12 +45,13 @@ fn print_help() -> Unit = {
   println("vitals — protocol compliance checker")
   println("")
   println("Usage:")
-  println("  vitals init                 Initialize data/ and rules/ directories")
-  println("  vitals log <subcmd> [args]  Log a data point (see `vitals log help`)")
-  println("  vitals show [date]          Show data for date (default: today)")
-  println("  vitals check [date]         Evaluate rules against data")
-  println("  vitals rules                List all loaded rules")
-  println("  vitals help                 Show this message")
+  println("  vitals init                  Initialize data/ and rules/ directories")
+  println("  vitals log <subcmd> [args]   Log a data point (see `vitals log help`)")
+  println("  vitals show [date]           Show data for date (default: today)")
+  println("  vitals check [date]          Evaluate rules against data")
+  println("  vitals report [--month]      Markdown compliance report for the window")
+  println("  vitals rules                 List all loaded rules")
+  println("  vitals help                  Show this message")
   println("")
   println("Date format: YYYY-MM-DD")
 }
@@ -127,6 +129,200 @@ effect fn cmd_rules() -> Unit = {
       }
       println("")
     }
+  }
+}
+
+// ---------- report ----------
+
+effect fn cmd_report(args: List[String]) -> Unit = {
+  let flags = parse_flags(args)
+  let end_date = get_flag_str(flags, "end") |> option.unwrap_or(today())
+  let want_month = get_flag_bool(flags, "month")
+  let window_days = if want_month then 30 else 7
+
+  let dates = generate_dates_back(end_date, window_days)
+  let start_date = list.first(dates) |> option.unwrap_or(end_date)
+  let days_with_data = count_data_days(dates)
+
+  println("# Vitals Report")
+  println("")
+  println("**" + start_date + " → " + end_date + "**  (" + int.to_string(window_days) + " days)")
+  println("")
+  println("- Days logged: " + int.to_string(days_with_data) + " / " + int.to_string(window_days))
+
+  if not fs.exists("rules") then {
+    println("")
+    println("(no rules loaded — run `vitals init`)")
+  } else {
+    let files = fs.list_dir("rules")! |> list.filter((f) => string.ends_with(f, ".json"))
+    let sorted = list.sort(files)
+
+    let summary = compute_protocol_summary(sorted, dates)
+    println("- Total rule-evaluations: " + int.to_string(summary.0)
+      + " (✓ " + int.to_string(summary.1)
+      + " / ✗ " + int.to_string(summary.2)
+      + " / - " + int.to_string(summary.3) + ")")
+    println("")
+
+    println("## Per-protocol pass rate over window")
+    println("")
+    println("| Protocol | ✓ Pass | ✗ Fail | - Skip | Total | Pass % |")
+    println("|---|---:|---:|---:|---:|---:|")
+    for file in sorted {
+      let path = "rules/" + file
+      let content = fs.read_text(path)!
+      let obj = json.parse(content)!
+      let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
+      let name = json.get_string(obj, "name") |> option.unwrap_or("")
+      let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+      let stats = aggregate_rule_results(rules, dates)
+      let total = stats.0
+      let pass = stats.1
+      let fail = stats.2
+      let skip = stats.3
+      let pct = if total == 0 then "—" else int.to_string((pass * 100) / total) + "%"
+      println("| " + proto + " " + name + " | " + int.to_string(pass) + " | " + int.to_string(fail) + " | " + int.to_string(skip) + " | " + int.to_string(total) + " | " + pct + " |")
+    }
+    println("")
+
+    println("## Today's failures (" + end_date + ")")
+    println("")
+    var any_fail = false
+    for file in sorted {
+      let path = "rules/" + file
+      let content = fs.read_text(path)!
+      let obj = json.parse(content)!
+      let _proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
+      let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+      for rule in rules {
+        let result = evaluate_rule_at(rule, end_date)
+        match result {
+          Fail(reason) => {
+            any_fail = true
+            let id = json.get_string(rule, "id") |> option.unwrap_or("?")
+            let desc = json.get_string(rule, "description") |> option.unwrap_or("")
+            let recovery = json.get_string(rule, "recovery_ref") |> option.unwrap_or("")
+            println("- **" + id + "** — " + desc)
+            println("  - reason: " + reason)
+            if string.len(recovery) > 0 then {
+              println("  - recovery: [" + recovery + "](https://github.com/O6lvl4/O6lvl4-protocol/blob/main/protocols/" + recovery + ")")
+            }
+          },
+          _ => {},
+        }
+      }
+    }
+    if not any_fail then println("None — every active rule passes or skips on " + end_date + ".")
+    println("")
+
+    println("## Recommended focus")
+    println("")
+    let prio = recommended_protocols(sorted, end_date)
+    if list.is_empty(prio) then println("System is in compliance. Keep the rhythm.")
+    else {
+      println("Highest-priority protocols with active failures (priority order):")
+      println("")
+      for line in prio { println(line) }
+    }
+  }
+}
+
+effect fn count_data_days(dates: List[String]) -> Int = {
+  if list.is_empty(dates) then 0
+  else {
+    let d = list.first(dates) |> option.unwrap_or("")
+    let rest = list.drop(dates, 1)
+    let here = if fs.exists("data/" + d + ".json") then 1 else 0
+    here + count_data_days(rest)
+  }
+}
+
+// Returns (total, pass, fail, skip) across all rules in all files for the window.
+effect fn compute_protocol_summary(files: List[String], dates: List[String]) -> (Int, Int, Int, Int) = {
+  if list.is_empty(files) then (0, 0, 0, 0)
+  else {
+    let f = list.first(files) |> option.unwrap_or("")
+    let rest = list.drop(files, 1)
+    let path = "rules/" + f
+    let content = fs.read_text(path)!
+    let obj = json.parse(content)!
+    let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+    let here = aggregate_rule_results(rules, dates)
+    let tail = compute_protocol_summary(rest, dates)
+    (here.0 + tail.0, here.1 + tail.1, here.2 + tail.2, here.3 + tail.3)
+  }
+}
+
+// (total, pass, fail, skip) for `rules` evaluated across `dates`.
+effect fn aggregate_rule_results(rules: List[json.Value], dates: List[String]) -> (Int, Int, Int, Int) = {
+  if list.is_empty(rules) then (0, 0, 0, 0)
+  else {
+    let r = list.first(rules) |> option.unwrap_or(json.null())
+    let rest_rules = list.drop(rules, 1)
+    let here = count_rule_outcomes(r, dates)
+    let tail = aggregate_rule_results(rest_rules, dates)
+    (here.0 + tail.0, here.1 + tail.1, here.2 + tail.2, here.3 + tail.3)
+  }
+}
+
+effect fn count_rule_outcomes(rule: json.Value, dates: List[String]) -> (Int, Int, Int, Int) = {
+  if list.is_empty(dates) then (0, 0, 0, 0)
+  else {
+    let d = list.first(dates) |> option.unwrap_or("")
+    let rest = list.drop(dates, 1)
+    let result = evaluate_rule_at(rule, d)
+    let here_pass = match result { Pass => 1, _ => 0 }
+    let here_fail = match result { Fail(_) => 1, _ => 0 }
+    let here_skip = match result { Skip(_) => 1, _ => 0 }
+    let tail = count_rule_outcomes(rule, rest)
+    (1 + tail.0, here_pass + tail.1, here_fail + tail.2, here_skip + tail.3)
+  }
+}
+
+effect fn recommended_protocols(files: List[String], end_date: String) -> List[String] = {
+  // Walk protocol files in priority order (lowest priority number = most upstream)
+  // and emit a one-line summary for each that has at least one active failure today.
+  // `protocol_priority_and_summary` is an effect fn, so we collect via a
+  // recursive helper instead of `list.map` to avoid Result-wrapping under
+  // a non-effect lambda.
+  let entries = collect_priority_summaries(files, end_date)
+  let with_fails = entries |> list.filter((t) => t.1 > 0)
+  with_fails |> list.map((t) => "- " + t.2)
+}
+
+effect fn collect_priority_summaries(files: List[String], end_date: String) -> List[(Int, Int, String)] = {
+  if list.is_empty(files) then []
+  else {
+    let f = list.first(files) |> option.unwrap_or("")
+    let rest = list.drop(files, 1)
+    let here = protocol_priority_and_summary(f, end_date)
+    [here] + collect_priority_summaries(rest, end_date)
+  }
+}
+
+effect fn protocol_priority_and_summary(file: String, end_date: String) -> (Int, Int, String) = {
+  let path = "rules/" + file
+  let content = fs.read_text(path)!
+  let obj = json.parse(content)!
+  let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
+  let name = json.get_string(obj, "name") |> option.unwrap_or("")
+  let priority = json.get_int(obj, "priority") |> option.unwrap_or(99)
+  let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+  let fails = count_today_fails(rules, end_date)
+  let summary = proto + " " + name + " — " + int.to_string(fails) + " failing"
+  (priority, fails, summary)
+}
+
+effect fn count_today_fails(rules: List[json.Value], end_date: String) -> Int = {
+  if list.is_empty(rules) then 0
+  else {
+    let r = list.first(rules) |> option.unwrap_or(json.null())
+    let rest = list.drop(rules, 1)
+    let here = match evaluate_rule_at(r, end_date) {
+      Fail(_) => 1,
+      _ => 0,
+    }
+    here + count_today_fails(rest, end_date)
   }
 }
 
@@ -320,7 +516,7 @@ effect fn eval_weekly_count_at(rule: json.Value, end_date: String) -> EvalResult
   let days_with_data = values |> list.filter((p) => p.0) |> list.len
   if days_with_data < 7 then Skip("insufficient history (need 7 days, got " + int.to_string(days_with_data) + ")")
   else {
-    let sum = values |> list.map((p) => p.1) |> list.fold(0.0, (a, b) => a + b)
+    let sum = values |> list.map((p) => p.1) |> list.fold(0.0, (a: Float, b: Float) => a + b)
     match operator {
       "weekly_count_lte" => if sum <= threshold then Pass
         else Fail("sum=" + float.to_string(sum) + " > " + float.to_string(threshold)),
@@ -363,7 +559,7 @@ effect fn eval_rolling_drop_pct_at(rule: json.Value, end_date: String) -> EvalRe
 
 fn avg_pairs(values: List[(Bool, Float)]) -> Float = {
   let nums = values |> list.map((p) => p.1)
-  let sum = nums |> list.fold(0.0, (a, b) => a + b)
+  let sum = nums |> list.fold(0.0, (a: Float, b: Float) => a + b)
   let n = list.len(nums)
   if n == 0 then 0.0 else sum / int.to_float(n)
 }
