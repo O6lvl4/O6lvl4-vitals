@@ -245,13 +245,20 @@ effect fn load_day(date: String) -> Option[json.Value] = {
 
 effect fn evaluate_rule_at(rule: json.Value, end_date: String) -> EvalResult = {
   let kind = json.get_string(rule, "type") |> option.unwrap_or("invariant")
+  let operator = json.get_string(rule, "operator") |> option.unwrap_or("")
   let window_str = json.get_string(rule, "window") |> option.unwrap_or("1d")
 
-  let raw = match parse_window(window_str) {
-    WSingle => eval_single_at(rule, end_date),
-    WConsecutive(n) => eval_consecutive_at(rule, end_date, n),
-    WWeeklyCount => eval_weekly_count_at(rule, end_date),
-    WUnsupported(s) => Skip("unsupported window: " + s),
+  // Operators that prescribe their own window semantics dispatch first;
+  // everything else falls through to plain window-based dispatch.
+  let raw = match operator {
+    "rolling_avg_drop_pct" => eval_rolling_drop_pct_at(rule, end_date),
+    "baseline_pct_lte" => Skip("baseline-relative ops not yet implemented"),
+    _ => match parse_window(window_str) {
+      WSingle => eval_single_at(rule, end_date),
+      WConsecutive(n) => eval_consecutive_at(rule, end_date, n),
+      WWeeklyCount => eval_weekly_count_at(rule, end_date),
+      WUnsupported(s) => Skip("unsupported window: " + s),
+    },
   }
 
   if kind == "violation" then invert(raw) else raw
@@ -306,6 +313,43 @@ effect fn eval_weekly_count_at(rule: json.Value, end_date: String) -> EvalResult
       _ => Skip("weekly window with unsupported operator: " + operator),
     }
   }
+}
+
+// Compare current 7-day average to the preceding 7-day average and
+// trigger if the current window dropped by `threshold_pct` % or more.
+//
+// Returns `Pass` when the drop condition holds (i.e. for a violation
+// rule, this means the violation fires). The outer `invert(...)` step
+// in `evaluate_rule_at` flips this for `type=violation` so the user
+// sees `Fail` for triggered violations.
+effect fn eval_rolling_drop_pct_at(rule: json.Value, end_date: String) -> EvalResult = {
+  let metric = json.get_string(rule, "metric") |> option.unwrap_or("")
+  let threshold_pct = json.get_float(rule, "threshold_pct") |> option.unwrap_or(0.0)
+
+  let dates = generate_dates_back(end_date, 14)
+  let values = collect_metric_floats(metric, dates, [])
+  let days_with_data = values |> list.filter((p) => p.0) |> list.len
+  if days_with_data < 14 then
+    Skip("insufficient history (need 14 days, got " + int.to_string(days_with_data) + ")")
+  else {
+    let prev_vals = list.take(values, 7)
+    let curr_vals = list.drop(values, 7)
+    let prev_avg = avg_pairs(prev_vals)
+    let curr_avg = avg_pairs(curr_vals)
+    if prev_avg <= 0.0 then Skip("prior-week average is non-positive")
+    else {
+      let drop_pct = (1.0 - curr_avg / prev_avg) * 100.0
+      if drop_pct >= threshold_pct then Pass
+      else Fail("drop=" + float.to_string(drop_pct) + "%, threshold=" + float.to_string(threshold_pct) + "%")
+    }
+  }
+}
+
+fn avg_pairs(values: List[(Bool, Float)]) -> Float = {
+  let nums = values |> list.map((p) => p.1)
+  let sum = nums |> list.fold(0.0, (a, b) => a + b)
+  let n = list.len(nums)
+  if n == 0 then 0.0 else sum / int.to_float(n)
 }
 
 // Returns (had_data_for_day, value_or_zero) per day, oldest first.
