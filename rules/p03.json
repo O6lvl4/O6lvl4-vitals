@@ -1,7 +1,7 @@
 {
   "protocol": "P03",
   "name": "筋力",
-  "priority": 10,
+  "priority": 12,
   "rules": [
     {
       "id": "P03-INV-1",

@@ -1,7 +1,7 @@
 {
   "protocol": "P09",
   "name": "回復",
-  "priority": 6,
+  "priority": 7,
   "rules": [
     {
       "id": "P09-INV-1",

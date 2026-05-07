@@ -1,7 +1,7 @@
 {
   "protocol": "P12",
   "name": "口腔ケア",
-  "priority": 12,
+  "priority": 13,
   "rules": [
     {
       "id": "P12-INV-1a",

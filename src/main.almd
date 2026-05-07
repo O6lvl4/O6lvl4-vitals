@@ -15,6 +15,7 @@ import fs
 import json
 import datetime
 import process
+import io
 
 type EvalResult =
   | Pass
@@ -155,7 +156,7 @@ effect fn cmd_report(args: List[String]) -> Unit = {
     println("(no rules loaded — run `vitals init`)")
   } else {
     let files = fs.list_dir("rules")! |> list.filter((f) => string.ends_with(f, ".json"))
-    let sorted = list.sort(files)
+    let sorted = sort_files_by_priority(files)
 
     let summary = compute_protocol_summary(sorted, dates)
     println("- Total rule-evaluations: " + int.to_string(summary.0)
@@ -215,6 +216,21 @@ effect fn cmd_report(args: List[String]) -> Unit = {
     if not any_fail then println("None — every active rule passes or skips on " + end_date + ".")
     println("")
 
+    println("## Streaks (consecutive Pass days, ≥ 3 only)")
+    println("")
+    let streaks = compute_streaks(sorted, end_date)
+    let kept = streaks |> list.filter((t) => t.0 >= 3)
+    if list.is_empty(kept) then println("(no qualifying streak yet)")
+    else {
+      println("| Days | Rule |")
+      println("|---:|---|")
+      let top = kept |> list.sort_by((t: (Int, String, String)) => -t.0)
+      for t in top {
+        println("| " + int.to_string(t.0) + " | " + t.1 + "  " + t.2 + " |")
+      }
+    }
+    println("")
+
     println("## Recommended focus")
     println("")
     let prio = recommended_protocols(sorted, end_date)
@@ -224,6 +240,76 @@ effect fn cmd_report(args: List[String]) -> Unit = {
       println("")
       for line in prio { println(line) }
     }
+  }
+}
+
+effect fn sort_files_by_priority(files: List[String]) -> List[String] = {
+  let pairs = collect_priorities(files, [])
+  let sorted = pairs |> list.sort_by((p: (Int, String)) => p.0)
+  sorted |> list.map((p: (Int, String)) => p.1)
+}
+
+effect fn collect_priorities(files: List[String], acc: List[(Int, String)]) -> List[(Int, String)] = {
+  if list.is_empty(files) then acc
+  else {
+    let f = list.first(files) |> option.unwrap_or("")
+    let rest = list.drop(files, 1)
+    let p = read_file_priority(f)
+    collect_priorities(rest, acc + [(p, f)])
+  }
+}
+
+effect fn read_file_priority(file: String) -> Int = {
+  let path = "rules/" + file
+  let content = fs.read_text(path)!
+  let obj = json.parse(content)!
+  json.get_int(obj, "priority") |> option.unwrap_or(99)
+}
+
+// ---------- streaks ----------
+
+// For each invariant rule across all protocol files, count the number
+// of consecutive Pass days back from `end_date`. Caps at 30 days to
+// keep evaluation bounded. Returns (streak_days, rule_id, description).
+effect fn compute_streaks(files: List[String], end_date: String) -> List[(Int, String, String)] = {
+  if list.is_empty(files) then []
+  else {
+    let f = list.first(files) |> option.unwrap_or("")
+    let rest = list.drop(files, 1)
+    let path = "rules/" + f
+    let content = fs.read_text(path)!
+    let obj = json.parse(content)!
+    let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+    let here = streaks_for_rules(rules, end_date, [])
+    here + compute_streaks(rest, end_date)
+  }
+}
+
+effect fn streaks_for_rules(rules: List[json.Value], end_date: String, acc: List[(Int, String, String)]) -> List[(Int, String, String)] = {
+  if list.is_empty(rules) then acc
+  else {
+    let r = list.first(rules) |> option.unwrap_or(json.null())
+    let rest = list.drop(rules, 1)
+    let kind = json.get_string(r, "type") |> option.unwrap_or("invariant")
+    let id = json.get_string(r, "id") |> option.unwrap_or("?")
+    let desc = json.get_string(r, "description") |> option.unwrap_or("")
+    if kind != "invariant" then streaks_for_rules(rest, end_date, acc)
+    else {
+      let n = compute_streak_at(r, end_date, 0, 30)
+      streaks_for_rules(rest, end_date, acc + [(n, id, desc)])
+    }
+  }
+}
+
+effect fn compute_streak_at(rule: json.Value, date: String, count: Int, cap: Int) -> Int = {
+  if count >= cap then count
+  else match evaluate_rule_at(rule, date) {
+    Pass => {
+      let prev_ts = datetime.add_days(parse_date(date), -1)
+      let prev_date = datetime.format(prev_ts, "YYYY-MM-DD")
+      compute_streak_at(rule, prev_date, count + 1, cap)
+    },
+    _ => count,
   }
 }
 
@@ -870,15 +956,51 @@ effect fn require_int(opt: Option[Int], name: String) -> Int =
     },
   }
 
+// Prompt-or-flag helpers. When a flag is missing, drop into a stdin
+// prompt with an optional default. Empty input accepts the default.
+effect fn prompt_str(label: String, default_val: String) -> String = {
+  let suffix = if string.len(default_val) > 0 then " [" + default_val + "]" else ""
+  io.print(label + suffix + ": ")
+  let line = string.trim(io.read_line())
+  if string.len(line) == 0 then default_val else line
+}
+
+effect fn prompt_int(label: String, default_val: Int) -> Int = {
+  let s = prompt_str(label, int.to_string(default_val))
+  match int.parse(s) {
+    ok(n) => n,
+    err(_) => default_val,
+  }
+}
+
+effect fn prompt_bool(label: String, default_val: Bool) -> Bool = {
+  let def = if default_val then "y" else "n"
+  let raw = prompt_str(label + " (y/n)", def)
+  let s = string.to_lower(raw)
+  s == "y" or s == "yes" or s == "true" or s == "1"
+}
+
+effect fn ask_str(opt: Option[String], label: String, default_val: String) -> String =
+  match opt {
+    some(v) => v,
+    none => prompt_str(label, default_val),
+  }
+
+effect fn ask_int(opt: Option[Int], label: String, default_val: Int) -> Int =
+  match opt {
+    some(v) => v,
+    none => prompt_int(label, default_val),
+  }
+
 // ---------- log: handlers ----------
 
 effect fn log_morning(args: List[String]) -> Unit = {
   let flags = parse_flags(args)
-  let bedtime = get_flag_str(flags, "bedtime") |> require_str("bedtime")
-  let wake = get_flag_str(flags, "wake") |> require_str("wake")
-  let latency = get_flag_int(flags, "latency") |> require_int("latency")
-  let wake_count = get_flag_int(flags, "wake-count") |> require_int("wake-count")
-  let quality = get_flag_int(flags, "quality") |> require_int("quality")
+  let bedtime = ask_str(get_flag_str(flags, "bedtime"), "就寝時刻", "23:30")
+  let wake = ask_str(get_flag_str(flags, "wake"), "起床時刻", "07:00")
+  let latency = ask_int(get_flag_int(flags, "latency"), "入眠まで(分)", 10)
+  let wake_count = ask_int(get_flag_int(flags, "wake-count"), "中途覚醒(回)", 0)
+  let quality = ask_int(get_flag_int(flags, "quality"), "睡眠の質(1-5)", 4)
 
   let duration_h = compute_sleep_hours(bedtime, wake)
 
@@ -905,7 +1027,7 @@ fn compute_sleep_hours(bedtime: String, wake: String) -> Float = {
 
 effect fn log_evening(args: List[String]) -> Unit = {
   let flags = parse_flags(args)
-  let focus = get_flag_int(flags, "focus") |> require_int("focus")
+  let focus = ask_int(get_flag_int(flags, "focus"), "深い集中時間(分)", 0)
   let pain = get_flag_str(flags, "pain")
   let hunger = get_flag_bool(flags, "hunger-crash")
   let off_day = get_flag_bool(flags, "off-day")
@@ -952,6 +1074,14 @@ effect fn log_evening(args: List[String]) -> Unit = {
   save_today(data)
 }
 
+fn default_meal_time(meal_type: String) -> String =
+  match meal_type {
+    "breakfast" => "07:30",
+    "lunch"     => "12:30",
+    "dinner"    => "19:00",
+    _ => "00:00",
+  }
+
 effect fn log_meal(args: List[String]) -> Unit = {
   let meal_type = list.get(args, 0) |> option.unwrap_or("")
   if not (meal_type == "breakfast" or meal_type == "lunch" or meal_type == "dinner") then {
@@ -959,9 +1089,10 @@ effect fn log_meal(args: List[String]) -> Unit = {
     process.exit(1)
   }
   let flags = parse_flags(list.drop(args, 1))
-  let time_s = get_flag_str(flags, "time") |> require_str("time")
-  let protein_ok = get_flag_bool(flags, "protein-ok")
-  let carb = get_flag_str(flags, "carb") |> option.unwrap_or("M")
+  let time_s = ask_str(get_flag_str(flags, "time"), meal_type + " の時刻", default_meal_time(meal_type))
+  let protein_ok = if get_flag_bool(flags, "protein-ok") then true
+    else prompt_bool("タンパク質 ≥ 20g 取れたか", true)
+  let carb = ask_str(get_flag_str(flags, "carb"), "主食量 (S/M/L)", "M")
 
   let entry = json.object([
     ("time", json.from_string(time_s)),
@@ -981,8 +1112,8 @@ effect fn log_session(args: List[String]) -> Unit = {
     process.exit(1)
   }
   let flags = parse_flags(list.drop(args, 1))
-  let duration = get_flag_int(flags, "duration") |> require_int("duration")
-  let rpe = get_flag_int(flags, "rpe") |> require_int("rpe")
+  let duration = ask_int(get_flag_int(flags, "duration"), "時間(分)", 30)
+  let rpe = ask_int(get_flag_int(flags, "rpe"), "RPE (1-10)", 5)
   let time_s = get_flag_str(flags, "time") |> option.unwrap_or("")
   let strength_kind = get_flag_str(flags, "kind") |> option.unwrap_or("")
 
@@ -1063,9 +1194,9 @@ fn now_hhmm() -> String = datetime.format(datetime.now(), "HH:mm")
 
 effect fn log_bath(args: List[String]) -> Unit = {
   let flags = parse_flags(args)
-  let time_s = get_flag_str(flags, "time") |> require_str("time")
-  let temp = get_flag_int(flags, "temp") |> require_int("temp")
-  let duration = get_flag_int(flags, "duration") |> require_int("duration")
+  let time_s = ask_str(get_flag_str(flags, "time"), "入浴時刻", "21:00")
+  let temp = ask_int(get_flag_int(flags, "temp"), "温度(℃)", 40)
+  let duration = ask_int(get_flag_int(flags, "duration"), "時間(分)", 12)
 
   let entry = json.object([
     ("time", json.from_string(time_s)),

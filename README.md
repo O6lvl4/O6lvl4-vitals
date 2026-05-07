@@ -67,8 +67,19 @@ Date format: `YYYY-MM-DD`。
 
 ### Logging examples
 
+フラグなしで呼ぶと対話モードに入り、各項目をデフォルト付きで聞かれます（Enter で採用）。フラグを渡せば自動モード。
+
 ```bash
-# 朝、起きてすぐ
+# 朝（対話）
+vitals log morning
+就寝時刻 [23:30]: 23:35
+起床時刻 [07:00]:               # Enter でデフォルト
+入眠まで(分) [10]:
+中途覚醒(回) [0]:
+睡眠の質(1-5) [4]:
+→ data/2026-05-07.json
+
+# 朝（自動 / シェルスクリプトから）
 vitals log morning --bedtime 23:35 --wake 07:05 --latency 10 --wake-count 0 --quality 4
 vitals log light --outdoor-morning 15 --outdoor-total 30
 vitals log brush morning

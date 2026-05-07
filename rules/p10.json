@@ -1,7 +1,7 @@
 {
   "protocol": "P10",
   "name": "計測（メタ）",
-  "priority": 13,
+  "priority": 14,
   "rules": [
     {
       "id": "P10-INV-2",
