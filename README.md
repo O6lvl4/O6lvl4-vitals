@@ -65,7 +65,85 @@ vitals help                  Show this message
 
 Date format: `YYYY-MM-DD`。
 
-### Logging examples
+## 日々の使い方
+
+毎日の入力はだいたい合計 **2〜3 分**。記録のタイミングは「ついで」で十分（食事後すぐ、入浴後すぐ、寝る前まとめて、など）。フラグを覚える必要はなく、サブコマンド名だけで対話モードに入る。
+
+### 朝（起床直後 〜 30分以内）
+
+```bash
+vitals log morning      # 5項目の対話：就寝/起床/入眠潜時/中途覚醒/質
+vitals log brush morning
+```
+
+朝の屋外光をすぐ浴びれた日は、外から戻ってきたタイミングで：
+
+```bash
+vitals log light --outdoor-morning 15
+```
+
+### 食事のたび（朝・昼・夜の3回）
+
+```bash
+vitals log meal breakfast    # 時刻 / タンパク質 Y/N / 主食量 S/M/L
+vitals log meal lunch
+vitals log meal dinner
+```
+
+食後に眠気が来たら忘れず夜の `evening` で記録する（`--hunger-crash` フラグや夕方眠気を加点）。
+
+### 日中（都度）
+
+```bash
+vitals log water 500                         # 500ml 飲んだ。累積される
+vitals log caffeine drip --time 09:30        # 飲料から mg を自動換算
+vitals log session cardio --duration 30 --rpe 5    # 運動 1セッション
+```
+
+### 夜（就寝前 〜 30分前）
+
+```bash
+vitals log bath              # 時刻 / 温度 / 時間
+vitals log brush evening
+vitals log floss
+
+# 1日の集計
+vitals log evening           # 集中時間 + 痛み + 空腹崩壊 + (任意) off-day/rest-day/work-hours/steps
+```
+
+### その日の状態を見る
+
+```bash
+vitals check                 # 全プロトコルの合格・違反をその場で評価
+vitals show                  # 当日 JSON の中身を確認
+```
+
+### 週次レビュー（金曜午後 or 日曜夜）
+
+```bash
+vitals report                # 直近7日のマークダウンレポート
+vitals report --month        # 直近30日
+vitals report > weekly.md    # ファイルに残す
+```
+
+レポートには：
+
+- 直近7日の **per-protocol pass rate**（priority 順）
+- **連続 Pass の streak**（≥3 日のみ）
+- **当日の違反**と各 [O6lvl4-protocol](https://github.com/O6lvl4/O6lvl4-protocol) 復旧手順への直リンク
+- **Recommended focus**：優先順位が最も高い違反プロトコル
+
+### こうなったら
+
+| 状況 | やる |
+|---|---|
+| 毎朝の入力が面倒に感じる | フラグ渡しで script 化（[Logging examples](#logging-examples) 参照）して shell alias / Raycast に登録 |
+| データを別マシンと共有したい | `export VITALS_DATA=$HOME/Dropbox/vitals` を `~/.zshrc` に |
+| 違反検知が連発する | report の **Recommended focus** の最上段（最 upstream の崩れ）から1つだけ復旧手順を実行 |
+| 1日入力を忘れた | 翌日に過去日付で `--end <YYYY-MM-DD>` 等は使わず、欠損のまま運用。skip 扱いで violation は出ない |
+| 機器（Apple Watch / Oura）を導入する | このリポは手動運用前提のままで OK。スクリプトで `vitals log` に流せばよい |
+
+## Logging examples (full reference)
 
 フラグなしで呼ぶと対話モードに入り、各項目をデフォルト付きで聞かれます（Enter で採用）。フラグを渡せば自動モード。
 
@@ -136,11 +214,11 @@ vitals log evening --focus 220
     "focus_forecast": 4,
     "pain_flag": false
   },
-  "meals": [
-    { "type": "breakfast", "time": "07:30", "protein_ok": true,  "carb_size": "M" },
-    { "type": "lunch",     "time": "12:30", "protein_ok": true,  "carb_size": "S" },
-    { "type": "dinner",    "time": "19:00", "protein_ok": true,  "carb_size": "M" }
-  ],
+  "meals": {
+    "breakfast": { "time": "07:30", "protein_ok": true, "carb_size": "M" },
+    "lunch":     { "time": "12:30", "protein_ok": true, "carb_size": "S" },
+    "dinner":    { "time": "19:00", "protein_ok": true, "carb_size": "M" }
+  },
   "hydration": { "water_ml": 1500, "caffeine_mg": 190 },
   "caffeine": [
     { "time": "09:30", "type": "drip" },
