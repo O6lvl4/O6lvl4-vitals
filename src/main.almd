@@ -143,8 +143,7 @@ effect fn cmd_check(args: List[String]) -> Unit = {
 }
 
 effect fn do_check(date: String, data_path: String) -> Unit = {
-  let data_content = fs.read_text(data_path)!
-  let data = json.parse(data_content)!
+  let _ = data_path  // kept for backward call signature; window-aware evaluator loads per-rule
 
   if not fs.exists("rules") then {
     println("rules/ does not exist. Run 'vitals init' first.")
@@ -173,7 +172,7 @@ effect fn do_check(date: String, data_path: String) -> Unit = {
         total = total + 1
         let id = json.get_string(rule, "id") |> option.unwrap_or("?")
         let desc = json.get_string(rule, "description") |> option.unwrap_or("")
-        let result = evaluate_rule(rule, data)
+        let result = evaluate_rule_at(rule, date)
         match result {
           Pass => {
             passed = passed + 1
@@ -202,19 +201,166 @@ effect fn do_check(date: String, data_path: String) -> Unit = {
 
 // ---------- evaluation ----------
 
-fn evaluate_rule(rule: json.Value, data: json.Value) -> EvalResult = {
+type WindowSpec =
+  | WSingle
+  | WConsecutive(Int)
+  | WWeeklyCount
+  | WUnsupported(String)
+
+fn parse_window(s: String) -> WindowSpec = {
+  if string.len(s) == 0 or s == "1d" or s == "rolling" then WSingle
+  else if string.ends_with(s, "d_consecutive") then {
+    let prefix_len = string.len(s) - string.len("d_consecutive")
+    let n_str = string.slice(s, 0, prefix_len)
+    match int.parse(n_str) {
+      ok(n) => WConsecutive(n),
+      err(_) => WUnsupported(s),
+    }
+  }
+  else if s == "7d" or s == "weekly" then WWeeklyCount
+  else WUnsupported(s)
+}
+
+fn evaluate_inner(rule: json.Value, data: json.Value) -> EvalResult = {
   let metric = json.get_string(rule, "metric") |> option.unwrap_or("")
   let operator = json.get_string(rule, "operator") |> option.unwrap_or("")
-  let kind = json.get_string(rule, "type") |> option.unwrap_or("invariant")
   let skip_flag = json.get_bool(rule, "skip_until_metric_available") |> option.unwrap_or(false)
-
-  let raw = match get_metric(data, metric) {
+  match get_metric(data, metric) {
     none => if skip_flag then Skip("metric N/A — feature gated") else Skip("metric missing"),
     some(v) => eval_op(operator, v, rule),
   }
-  // For violation rules, the operator describes the *bad* condition.
-  // True (Pass-shaped) → violation detected → emit Fail.
+}
+
+effect fn load_day(date: String) -> Option[json.Value] = {
+  let path = "data/" + date + ".json"
+  if not fs.exists(path) then none
+  else {
+    let content = fs.read_text(path)!
+    match json.parse(content) {
+      ok(v) => some(v),
+      err(_) => none,
+    }
+  }
+}
+
+effect fn evaluate_rule_at(rule: json.Value, end_date: String) -> EvalResult = {
+  let kind = json.get_string(rule, "type") |> option.unwrap_or("invariant")
+  let window_str = json.get_string(rule, "window") |> option.unwrap_or("1d")
+
+  let raw = match parse_window(window_str) {
+    WSingle => eval_single_at(rule, end_date),
+    WConsecutive(n) => eval_consecutive_at(rule, end_date, n),
+    WWeeklyCount => eval_weekly_count_at(rule, end_date),
+    WUnsupported(s) => Skip("unsupported window: " + s),
+  }
+
   if kind == "violation" then invert(raw) else raw
+}
+
+effect fn eval_single_at(rule: json.Value, date: String) -> EvalResult = {
+  match load_day(date) {
+    none => {
+      let skip_flag = json.get_bool(rule, "skip_until_metric_available") |> option.unwrap_or(false)
+      if skip_flag then Skip("metric N/A — feature gated") else Skip("no data for " + date)
+    },
+    some(data) => evaluate_inner(rule, data),
+  }
+}
+
+effect fn eval_consecutive_at(rule: json.Value, end_date: String, n: Int) -> EvalResult = {
+  let dates = generate_dates_back(end_date, n)
+  let results = collect_results(rule, dates, [])
+  // Skip if any day's data is missing (not enough history yet).
+  let any_skip = results |> list.any((r) => match r { Skip(_) => true, _ => false })
+  if any_skip then Skip("insufficient history (need " + int.to_string(n) + " days)")
+  else {
+    let all_pass = results |> list.all((r) => match r { Pass => true, _ => false })
+    if all_pass then Pass
+    else Fail("not all " + int.to_string(n) + " days satisfy condition")
+  }
+}
+
+// Sum the metric across the last 7 days and compare to the threshold.
+// Operator must be `weekly_count_lte` or `weekly_count_gte`. The metric
+// at each day is interpreted as a number (0 if the field is absent or
+// non-numeric). Useful for "count of off-days per week" and similar
+// per-day flag aggregates.
+effect fn eval_weekly_count_at(rule: json.Value, end_date: String) -> EvalResult = {
+  let operator = json.get_string(rule, "operator") |> option.unwrap_or("")
+  let metric = json.get_string(rule, "metric") |> option.unwrap_or("")
+  let threshold = json.get_float(rule, "threshold") |> option.unwrap_or(0.0)
+  let dates = generate_dates_back(end_date, 7)
+  let values = collect_metric_floats(metric, dates, [])
+  // Weekly counts are only meaningful with a full 7-day history. If
+  // any day in the window has no recorded data file, skip — partial
+  // coverage would silently produce false negatives.
+  let days_with_data = values |> list.filter((p) => p.0) |> list.len
+  if days_with_data < 7 then Skip("insufficient history (need 7 days, got " + int.to_string(days_with_data) + ")")
+  else {
+    let sum = values |> list.map((p) => p.1) |> list.fold(0.0, (a, b) => a + b)
+    match operator {
+      "weekly_count_lte" => if sum <= threshold then Pass
+        else Fail("sum=" + float.to_string(sum) + " > " + float.to_string(threshold)),
+      "weekly_count_gte" => if sum >= threshold then Pass
+        else Fail("sum=" + float.to_string(sum) + " < " + float.to_string(threshold)),
+      _ => Skip("weekly window with unsupported operator: " + operator),
+    }
+  }
+}
+
+// Returns (had_data_for_day, value_or_zero) per day, oldest first.
+effect fn collect_metric_floats(metric: String, dates: List[String], acc: List[(Bool, Float)]) -> List[(Bool, Float)] = {
+  if list.is_empty(dates) then acc
+  else {
+    let d = list.first(dates) |> option.unwrap_or("")
+    let rest = list.drop(dates, 1)
+    let pair = match load_day(d) {
+      none => (false, 0.0),
+      some(data) => match get_metric(data, metric) {
+        none => (true, 0.0),
+        some(v) => (true, coerce_to_float(v) |> option.unwrap_or(0.0)),
+      },
+    }
+    collect_metric_floats(metric, rest, acc + [pair])
+  }
+}
+
+effect fn collect_results(rule: json.Value, dates: List[String], acc: List[EvalResult]) -> List[EvalResult] = {
+  if list.is_empty(dates) then acc
+  else {
+    let d = list.first(dates) |> option.unwrap_or("")
+    let rest = list.drop(dates, 1)
+    let r = eval_single_at(rule, d)
+    collect_results(rule, rest, acc + [r])
+  }
+}
+
+fn parse_date(s: String) -> Int = {
+  let parts = string.split(s, "-")
+  let y = parse_int_or_zero(list.get(parts, 0) |> option.unwrap_or("0"))
+  let m = parse_int_or_zero(list.get(parts, 1) |> option.unwrap_or("0"))
+  let d = parse_int_or_zero(list.get(parts, 2) |> option.unwrap_or("0"))
+  datetime.from_parts(y, m, d, 0, 0, 0)
+}
+
+fn parse_int_or_zero(s: String) -> Int =
+  match int.parse(string.trim(s)) {
+    ok(n) => n,
+    err(_) => 0,
+  }
+
+fn generate_dates_back(end_date: String, n: Int) -> List[String] = {
+  let end_ts = parse_date(end_date)
+  generate_dates_back_at(end_ts, n, 0, [])
+}
+
+fn generate_dates_back_at(end_ts: Int, n: Int, i: Int, acc: List[String]) -> List[String] = {
+  if i >= n then acc
+  else {
+    let day_ts = datetime.add_days(end_ts, -(n - 1 - i))
+    let day_str = datetime.format(day_ts, "YYYY-MM-DD")
+    generate_dates_back_at(end_ts, n, i + 1, acc + [day_str])
+  }
 }
 
 fn invert(r: EvalResult) -> EvalResult = {
