@@ -164,17 +164,21 @@ vitals log evening --focus 220
 | ルール定義（14プロトコル分） | JSON 80ルール定義済み |
 | `vitals init` / `show` / `check` / `rules` | 実装済み |
 | `vitals log <subcmd>` フラグベース入力 | 実装済み（10サブコマンド） |
-| 多日 window オペレータ（rolling/consecutive/weekly） | Phase 2 |
-| iPhone Health 自動取り込み | Phase 2 |
-| RescueTime 連携 | Phase 2 |
-| 違反トレンドダッシュボード | Phase 3 |
-| HRV / Zone 厳密判定（要機器） | 機器導入後 |
+| 単日 op (gte / gt / lte / lt / eq / time_drift_lte / bool_eq) | 実装済み |
+| `Nd_consecutive` window | 実装済み |
+| `weekly_count_lte` / `weekly_count_gte` | 実装済み |
+| `rolling_avg_drop_pct`（前週比トレンド） | 実装済み |
+| `monthly` window | 実装済み |
+| `baseline_pct_lte`（HRV ベースライン） | 機器導入後 |
+| iPhone Health 自動取り込み | Phase 3 |
+| RescueTime 連携 | Phase 3 |
+| 違反トレンドダッシュボード / 朝の通知 | Phase 3 |
 
 ## Roadmap
 
 - **Phase 1** (完了): ルール定義 + 評価器 + `vitals log` フラグ入力
-- **Phase 2**: 多日 window オペレータ実装 + iPhone Health 取り込み + 集中時間自動計測
-- **Phase 3**: Web ダッシュボード + 朝の通知 + 復旧手順の自動 TODO 化
+- **Phase 2** (完了): 多日 window オペレータ（consecutive / weekly_count / rolling_avg_drop / monthly）
+- **Phase 3**: iPhone Health 取り込み + RescueTime 連携 + Web ダッシュボード + 朝の通知
 
 ## License
 
