@@ -59,7 +59,7 @@ fn print_log_help() -> Unit = {
   println("")
   println("Subcommands:")
   println("  morning  --bedtime <HH:MM> --wake <HH:MM> --latency <min> --wake-count <n> --quality <1-5>")
-  println("  evening  --focus <min> [--pain <where>] [--hunger-crash]")
+  println("  evening  --focus <min> [--pain <where>] [--hunger-crash] [--off-day] [--rest-day] [--work-hours <h>] [--steps <n>]")
   println("  meal <breakfast|lunch|dinner> --time <HH:MM> [--protein-ok] [--carb <S|M|L>]")
   println("  session <cardio|strength> --duration <min> --rpe <1-10> [--time <HH:MM>] [--kind A|B]")
   println("  water <ml>")
@@ -205,6 +205,7 @@ type WindowSpec =
   | WSingle
   | WConsecutive(Int)
   | WWeeklyCount
+  | WMonthly
   | WUnsupported(String)
 
 fn parse_window(s: String) -> WindowSpec = {
@@ -218,6 +219,7 @@ fn parse_window(s: String) -> WindowSpec = {
     }
   }
   else if s == "7d" or s == "weekly" then WWeeklyCount
+  else if s == "monthly" then WMonthly
   else WUnsupported(s)
 }
 
@@ -257,6 +259,7 @@ effect fn evaluate_rule_at(rule: json.Value, end_date: String) -> EvalResult = {
       WSingle => eval_single_at(rule, end_date),
       WConsecutive(n) => eval_consecutive_at(rule, end_date, n),
       WWeeklyCount => eval_weekly_count_at(rule, end_date),
+      WMonthly => eval_monthly_at(rule, end_date),
       WUnsupported(s) => Skip("unsupported window: " + s),
     },
   }
@@ -285,6 +288,19 @@ effect fn eval_consecutive_at(rule: json.Value, end_date: String, n: Int) -> Eva
     if all_pass then Pass
     else Fail("not all " + int.to_string(n) + " days satisfy condition")
   }
+}
+
+// Monthly windows pass if ANY day in the last 30 satisfies the rule
+// (e.g. "took at least one full rest day this month"). Skip when no
+// data exists in the window at all.
+effect fn eval_monthly_at(rule: json.Value, end_date: String) -> EvalResult = {
+  let dates = generate_dates_back(end_date, 30)
+  let results = collect_results(rule, dates, [])
+  let any_pass = results |> list.any((r) => match r { Pass => true, _ => false })
+  let all_skip = results |> list.all((r) => match r { Skip(_) => true, _ => false })
+  if any_pass then Pass
+  else if all_skip then Skip("no data in 30-day window")
+  else Fail("not satisfied on any day in last 30")
 }
 
 // Sum the metric across the last 7 days and compare to the threshold.
@@ -696,15 +712,19 @@ effect fn log_evening(args: List[String]) -> Unit = {
   let focus = get_flag_int(flags, "focus") |> require_int("focus")
   let pain = get_flag_str(flags, "pain")
   let hunger = get_flag_bool(flags, "hunger-crash")
+  let off_day = get_flag_bool(flags, "off-day")
+  let rest_day = get_flag_bool(flags, "rest-day")
+  let work_hours = get_flag_float(flags, "work-hours")
+  let steps = get_flag_int(flags, "steps")
 
-  let data = load_today()
-  let d1 = set_field(data, "deep_work_min", json.from_int(focus))
+  var data = load_today()
+  data = set_field(data, "deep_work_min", json.from_int(focus))
 
   let pain_flag = match pain {
     some(_) => true,
     none => false,
   }
-  let subj = json.get(d1, "subjective") |> option.unwrap_or(json.object([]))
+  let subj = json.get(data, "subjective") |> option.unwrap_or(json.object([]))
   let subj1 = match json.set_path(subj, json.field(json.root(), "pain_flag"), json.from_bool(pain_flag)) {
     ok(v) => v, err(_) => subj,
   }
@@ -717,8 +737,23 @@ effect fn log_evening(args: List[String]) -> Unit = {
   let subj3 = match json.set_path(subj2, json.field(json.root(), "hunger_crash_flag"), json.from_bool(hunger)) {
     ok(v) => v, err(_) => subj2,
   }
-  let updated = set_field(d1, "subjective", subj3)
-  save_today(updated)
+  data = set_field(data, "subjective", subj3)
+
+  if off_day then {
+    data = set_field(data, "is_off_day", json.from_bool(true))
+  }
+  if rest_day then {
+    data = set_field(data, "monthly_rest_day_taken", json.from_bool(true))
+  }
+  match work_hours {
+    some(h) => { data = set_field(data, "daily_work_hours", json.from_float(h)) },
+    none => {},
+  }
+  match steps {
+    some(s) => { data = set_field(data, "steps_total", json.from_int(s)) },
+    none => {},
+  }
+  save_today(data)
 }
 
 effect fn log_meal(args: List[String]) -> Unit = {
