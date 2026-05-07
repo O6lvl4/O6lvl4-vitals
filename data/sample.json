@@ -11,20 +11,22 @@
   "subjective": {
     "mood": 4,
     "focus_forecast": 4,
-    "pain_flag": false
+    "pain_flag": false,
+    "hunger_crash_flag": false,
+    "afternoon_drowsiness": 2
   },
-  "meals": [
-    { "type": "breakfast", "time": "07:30", "protein_ok": true,  "carb_size": "M" },
-    { "type": "lunch",     "time": "12:30", "protein_ok": true,  "carb_size": "S" },
-    { "type": "dinner",    "time": "19:00", "protein_ok": true,  "carb_size": "M" }
-  ],
+  "meals": {
+    "breakfast": { "time": "07:30", "protein_ok": true, "carb_size": "M" },
+    "lunch":     { "time": "12:30", "protein_ok": true, "carb_size": "S" },
+    "dinner":    { "time": "19:00", "protein_ok": true, "carb_size": "M" }
+  },
   "hydration": {
-    "water_ml": 1500,
+    "water_ml": 1800,
     "caffeine_mg": 190
   },
   "caffeine": [
-    { "time": "09:30", "type": "drip" },
-    { "time": "12:30", "type": "drip" }
+    { "time": "09:30", "type": "drip", "mg": 95 },
+    { "time": "12:30", "type": "drip", "mg": 95 }
   ],
   "sessions": [
     { "kind": "cardio", "duration_min": 30, "rpe": 5, "time": "07:30" }
@@ -40,6 +42,7 @@
     "floss": true
   },
   "deep_work_min": 220,
-  "outdoor_light_min": 25,
+  "outdoor_morning_min": 15,
+  "outdoor_total_min": 35,
   "longest_sit_compliance": true
 }

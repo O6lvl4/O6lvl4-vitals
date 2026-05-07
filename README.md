@@ -54,14 +54,45 @@ vitals check
 ## Usage
 
 ```
-vitals init                 Initialize data/ and rules/ directories
-vitals show [date]          Show logged data for date (default: today)
-vitals check [date]         Evaluate all rules against data
-vitals rules                List all loaded rules
-vitals help                 Show this message
+vitals init                  Initialize data/ and rules/ directories
+vitals log <subcmd> [args]   Log a data point (see `vitals log help`)
+vitals show [date]           Show logged data for date (default: today)
+vitals check [date]          Evaluate all rules against data
+vitals rules                 List all loaded rules
+vitals help                  Show this message
 ```
 
 Date format: `YYYY-MM-DD`。
+
+### Logging examples
+
+```bash
+# 朝、起きてすぐ
+vitals log morning --bedtime 23:35 --wake 07:05 --latency 10 --wake-count 0 --quality 4
+vitals log light --outdoor-morning 15 --outdoor-total 30
+vitals log brush morning
+
+# 食事のたびに
+vitals log meal breakfast --time 07:30 --protein-ok --carb M
+vitals log meal lunch     --time 12:30 --protein-ok --carb S
+vitals log meal dinner    --time 19:00 --protein-ok --carb M
+
+# 水分・カフェインは都度
+vitals log water 500            # 累積で記録される
+vitals log caffeine drip --time 09:30   # mg は飲料種別から自動換算
+
+# 運動
+vitals log session cardio   --duration 30 --rpe 5 --time 07:30
+vitals log session strength --duration 40 --rpe 7 --kind A
+
+# 夜
+vitals log bath --time 21:00 --temp 40 --duration 12
+vitals log brush evening
+vitals log floss
+vitals log evening --focus 220
+```
+
+各コマンドは `data/<today>.json` を読み込んで該当フィールドだけ更新するので、順序や回数は自由。
 
 ## Data model
 
@@ -130,10 +161,10 @@ Date format: `YYYY-MM-DD`。
 
 | 機能 | 状態 |
 |---|---|
-| ルール定義（14プロトコル分） | JSON で記述（評価器の対応は段階的） |
-| `vitals init` / `show` / `check` | 実装中 |
-| 日次データの手動入力（JSON 直編集） | OK |
-| `vitals log <type>` フラグベース入力 | Phase 2 |
+| ルール定義（14プロトコル分） | JSON 80ルール定義済み |
+| `vitals init` / `show` / `check` / `rules` | 実装済み |
+| `vitals log <subcmd>` フラグベース入力 | 実装済み（10サブコマンド） |
+| 多日 window オペレータ（rolling/consecutive/weekly） | Phase 2 |
 | iPhone Health 自動取り込み | Phase 2 |
 | RescueTime 連携 | Phase 2 |
 | 違反トレンドダッシュボード | Phase 3 |
@@ -141,9 +172,9 @@ Date format: `YYYY-MM-DD`。
 
 ## Roadmap
 
-- **Phase 1** (現在): ルール定義 + 評価器 + 手動 JSON 入力
-- **Phase 2**: CLI で対話的に日次フォーム入力 / iPhone Health 取り込み / 集中時間自動計測
-- **Phase 3**: Web ダッシュボード / 朝の通知 / 復旧手順の自動 TODO 化
+- **Phase 1** (完了): ルール定義 + 評価器 + `vitals log` フラグ入力
+- **Phase 2**: 多日 window オペレータ実装 + iPhone Health 取り込み + 集中時間自動計測
+- **Phase 3**: Web ダッシュボード + 朝の通知 + 復旧手順の自動 TODO 化
 
 ## License
 

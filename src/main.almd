@@ -1,11 +1,12 @@
 // O6lvl4 vitals — protocol compliance checker
 //
 // Usage:
-//   vitals init           Initialize data/ and rules/ directories
-//   vitals show [date]    Show data for date (default: today)
-//   vitals check [date]   Evaluate rules against data
-//   vitals rules          List all loaded rules
-//   vitals help           Show this message
+//   vitals init                 Initialize data/ and rules/ directories
+//   vitals log <subcmd> [args]  Append a daily log entry (see `vitals log help`)
+//   vitals show [date]          Show data for date (default: today)
+//   vitals check [date]         Evaluate rules against data
+//   vitals rules                List all loaded rules
+//   vitals help                 Show this message
 //
 // Date format: YYYY-MM-DD
 
@@ -13,6 +14,7 @@ import env
 import fs
 import json
 import datetime
+import process
 
 type EvalResult =
   | Pass
@@ -25,6 +27,7 @@ effect fn main() -> Unit = {
   let rest = list.drop(args, 1)
   match cmd {
     "init"  => cmd_init(),
+    "log"   => cmd_log(rest),
     "show"  => cmd_show(rest),
     "check" => cmd_check(rest),
     "rules" => cmd_rules(),
@@ -41,13 +44,32 @@ fn print_help() -> Unit = {
   println("vitals — protocol compliance checker")
   println("")
   println("Usage:")
-  println("  vitals init           Initialize data/ and rules/ directories")
-  println("  vitals show [date]    Show data for date (default: today)")
-  println("  vitals check [date]   Evaluate rules against data")
-  println("  vitals rules          List all loaded rules")
-  println("  vitals help           Show this message")
+  println("  vitals init                 Initialize data/ and rules/ directories")
+  println("  vitals log <subcmd> [args]  Log a data point (see `vitals log help`)")
+  println("  vitals show [date]          Show data for date (default: today)")
+  println("  vitals check [date]         Evaluate rules against data")
+  println("  vitals rules                List all loaded rules")
+  println("  vitals help                 Show this message")
   println("")
   println("Date format: YYYY-MM-DD")
+}
+
+fn print_log_help() -> Unit = {
+  println("vitals log <subcmd> [args]")
+  println("")
+  println("Subcommands:")
+  println("  morning  --bedtime <HH:MM> --wake <HH:MM> --latency <min> --wake-count <n> --quality <1-5>")
+  println("  evening  --focus <min> [--pain <where>] [--hunger-crash]")
+  println("  meal <breakfast|lunch|dinner> --time <HH:MM> [--protein-ok] [--carb <S|M|L>]")
+  println("  session <cardio|strength> --duration <min> --rpe <1-10> [--time <HH:MM>] [--kind A|B]")
+  println("  water <ml>")
+  println("  caffeine <drip|espresso|green-tea|black-tea|energy> [--time <HH:MM>]")
+  println("  bath  --time <HH:MM> --temp <C> --duration <min>")
+  println("  brush <morning|evening>")
+  println("  floss")
+  println("  light --outdoor-morning <min> --outdoor-total <min>")
+  println("")
+  println("Each call merges into data/<today>.json.")
 }
 
 // ---------- init ----------
@@ -306,4 +328,366 @@ fn to_minutes(s: String) -> Int = {
     err(_) => 0,
   }
   h * 60 + m
+}
+
+// ---------- log ----------
+
+effect fn cmd_log(args: List[String]) -> Unit = {
+  let subcmd = list.get(args, 0) |> option.unwrap_or("help")
+  let rest = list.drop(args, 1)
+  match subcmd {
+    "morning"  => log_morning(rest),
+    "evening"  => log_evening(rest),
+    "meal"     => log_meal(rest),
+    "session"  => log_session(rest),
+    "water"    => log_water(rest),
+    "caffeine" => log_caffeine(rest),
+    "bath"     => log_bath(rest),
+    "brush"    => log_brush(rest),
+    "floss"    => log_floss(rest),
+    "light"    => log_light(rest),
+    "help"     => print_log_help(),
+    _ => {
+      println("Unknown log subcommand: " + subcmd)
+      println("")
+      print_log_help()
+    },
+  }
+}
+
+// ---------- log: file I/O ----------
+
+effect fn load_today() -> json.Value = {
+  let date = today()
+  let path = "data/" + date + ".json"
+  if not fs.exists(path) then {
+    let _ = fs.mkdir_p("data")!
+    json.object([("date", json.from_string(date))])
+  } else {
+    let content = fs.read_text(path)!
+    json.parse(content)!
+  }
+}
+
+effect fn save_today(value: json.Value) -> Unit = {
+  let date = today()
+  let path = "data/" + date + ".json"
+  let _ = fs.write(path, json.stringify_pretty(value))!
+  println("→ data/" + date + ".json")
+}
+
+fn set_field(data: json.Value, field: String, value: json.Value) -> json.Value =
+  match json.set_path(data, json.field(json.root(), field), value) {
+    ok(v) => v,
+    err(_) => data,
+  }
+
+fn set_nested(data: json.Value, parent: String, child: String, value: json.Value) -> json.Value = {
+  let parent_val = json.get(data, parent) |> option.unwrap_or(json.object([]))
+  let updated_parent = match json.set_path(parent_val, json.field(json.root(), child), value) {
+    ok(v) => v,
+    err(_) => parent_val,
+  }
+  set_field(data, parent, updated_parent)
+}
+
+fn append_to_array(data: json.Value, field: String, item: json.Value) -> json.Value = {
+  let arr = json.get_array(data, field) |> option.unwrap_or([])
+  let new_arr = arr + [item]
+  set_field(data, field, json.array(new_arr))
+}
+
+// ---------- log: flag parsing ----------
+
+fn parse_flags(args: List[String]) -> Map[String, String] =
+  parse_flags_at(args, 0, map.new())
+
+fn parse_flags_at(args: List[String], i: Int, acc: Map[String, String]) -> Map[String, String] = {
+  if i >= list.len(args) then acc
+  else {
+    let arg = list.get(args, i) |> option.unwrap_or("")
+    if not string.starts_with(arg, "--") then parse_flags_at(args, i + 1, acc)
+    else {
+      let key = string.slice(arg, 2)
+      let next_opt = list.get(args, i + 1)
+      match next_opt {
+        none => parse_flags_at(args, i + 1, map.set(acc, key, "true")),
+        some(v) => {
+          if string.starts_with(v, "--") then
+            parse_flags_at(args, i + 1, map.set(acc, key, "true"))
+          else
+            parse_flags_at(args, i + 2, map.set(acc, key, v))
+        },
+      }
+    }
+  }
+}
+
+fn get_flag_str(flags: Map[String, String], key: String) -> Option[String] =
+  map.get(flags, key)
+
+fn get_flag_int(flags: Map[String, String], key: String) -> Option[Int] =
+  match map.get(flags, key) {
+    none => none,
+    some(s) => match int.parse(s) {
+      ok(n) => some(n),
+      err(_) => none,
+    },
+  }
+
+fn get_flag_float(flags: Map[String, String], key: String) -> Option[Float] =
+  match map.get(flags, key) {
+    none => none,
+    some(s) => match float.parse(s) {
+      ok(f) => some(f),
+      err(_) => none,
+    },
+  }
+
+fn get_flag_bool(flags: Map[String, String], key: String) -> Bool =
+  match map.get(flags, key) {
+    some("true") => true,
+    _ => false,
+  }
+
+effect fn require_str(opt: Option[String], name: String) -> String =
+  match opt {
+    some(v) => v,
+    none => {
+      println("error: missing required flag --" + name)
+      process.exit(1)
+    },
+  }
+
+effect fn require_int(opt: Option[Int], name: String) -> Int =
+  match opt {
+    some(v) => v,
+    none => {
+      println("error: missing or invalid required flag --" + name)
+      process.exit(1)
+    },
+  }
+
+// ---------- log: handlers ----------
+
+effect fn log_morning(args: List[String]) -> Unit = {
+  let flags = parse_flags(args)
+  let bedtime = get_flag_str(flags, "bedtime") |> require_str("bedtime")
+  let wake = get_flag_str(flags, "wake") |> require_str("wake")
+  let latency = get_flag_int(flags, "latency") |> require_int("latency")
+  let wake_count = get_flag_int(flags, "wake-count") |> require_int("wake-count")
+  let quality = get_flag_int(flags, "quality") |> require_int("quality")
+
+  let duration_h = compute_sleep_hours(bedtime, wake)
+
+  let sleep = json.object([
+    ("bedtime", json.from_string(bedtime)),
+    ("wake_time", json.from_string(wake)),
+    ("duration_h", json.from_float(duration_h)),
+    ("onset_latency_min", json.from_int(latency)),
+    ("wake_count", json.from_int(wake_count)),
+    ("subjective_quality", json.from_int(quality)),
+  ])
+
+  let data = load_today()
+  let updated = set_field(data, "sleep", sleep)
+  save_today(updated)
+}
+
+fn compute_sleep_hours(bedtime: String, wake: String) -> Float = {
+  let b = to_minutes(bedtime)
+  let w = to_minutes(wake)
+  let diff = if w >= b then w - b else (1440 - b) + w
+  int.to_float(diff) / 60.0
+}
+
+effect fn log_evening(args: List[String]) -> Unit = {
+  let flags = parse_flags(args)
+  let focus = get_flag_int(flags, "focus") |> require_int("focus")
+  let pain = get_flag_str(flags, "pain")
+  let hunger = get_flag_bool(flags, "hunger-crash")
+
+  let data = load_today()
+  let d1 = set_field(data, "deep_work_min", json.from_int(focus))
+
+  let pain_flag = match pain {
+    some(_) => true,
+    none => false,
+  }
+  let subj = json.get(d1, "subjective") |> option.unwrap_or(json.object([]))
+  let subj1 = match json.set_path(subj, json.field(json.root(), "pain_flag"), json.from_bool(pain_flag)) {
+    ok(v) => v, err(_) => subj,
+  }
+  let subj2 = match pain {
+    none => subj1,
+    some(loc) => match json.set_path(subj1, json.field(json.root(), "pain_location"), json.from_string(loc)) {
+      ok(v) => v, err(_) => subj1,
+    },
+  }
+  let subj3 = match json.set_path(subj2, json.field(json.root(), "hunger_crash_flag"), json.from_bool(hunger)) {
+    ok(v) => v, err(_) => subj2,
+  }
+  let updated = set_field(d1, "subjective", subj3)
+  save_today(updated)
+}
+
+effect fn log_meal(args: List[String]) -> Unit = {
+  let meal_type = list.get(args, 0) |> option.unwrap_or("")
+  if not (meal_type == "breakfast" or meal_type == "lunch" or meal_type == "dinner") then {
+    println("error: meal type must be breakfast, lunch, or dinner")
+    process.exit(1)
+  }
+  let flags = parse_flags(list.drop(args, 1))
+  let time_s = get_flag_str(flags, "time") |> require_str("time")
+  let protein_ok = get_flag_bool(flags, "protein-ok")
+  let carb = get_flag_str(flags, "carb") |> option.unwrap_or("M")
+
+  let entry = json.object([
+    ("time", json.from_string(time_s)),
+    ("protein_ok", json.from_bool(protein_ok)),
+    ("carb_size", json.from_string(carb)),
+  ])
+
+  let data = load_today()
+  let updated = set_nested(data, "meals", meal_type, entry)
+  save_today(updated)
+}
+
+effect fn log_session(args: List[String]) -> Unit = {
+  let kind = list.get(args, 0) |> option.unwrap_or("")
+  if not (kind == "cardio" or kind == "strength") then {
+    println("error: session kind must be cardio or strength")
+    process.exit(1)
+  }
+  let flags = parse_flags(list.drop(args, 1))
+  let duration = get_flag_int(flags, "duration") |> require_int("duration")
+  let rpe = get_flag_int(flags, "rpe") |> require_int("rpe")
+  let time_s = get_flag_str(flags, "time") |> option.unwrap_or("")
+  let strength_kind = get_flag_str(flags, "kind") |> option.unwrap_or("")
+
+  let mut_entries = [
+    ("kind", json.from_string(kind)),
+    ("duration_min", json.from_int(duration)),
+    ("rpe", json.from_int(rpe)),
+  ]
+  let with_time = if string.len(time_s) > 0 then mut_entries + [("time", json.from_string(time_s))] else mut_entries
+  let final_entries = if kind == "strength" and string.len(strength_kind) > 0
+    then with_time + [("strength_kind", json.from_string(strength_kind))]
+    else with_time
+
+  let entry = json.object(final_entries)
+  let data = load_today()
+  let updated = append_to_array(data, "sessions", entry)
+  save_today(updated)
+}
+
+effect fn log_water(args: List[String]) -> Unit = {
+  let ml_s = list.get(args, 0) |> option.unwrap_or("")
+  let ml = match int.parse(ml_s) {
+    ok(n) => n,
+    err(_) => {
+      println("error: water requires a positive integer (ml). got: " + ml_s)
+      process.exit(1)
+    },
+  }
+  let data = load_today()
+  let hydration = json.get(data, "hydration") |> option.unwrap_or(json.object([]))
+  let prev_water = json.get_int(hydration, "water_ml") |> option.unwrap_or(0)
+  let total = prev_water + ml
+  let updated_hyd = match json.set_path(hydration, json.field(json.root(), "water_ml"), json.from_int(total)) {
+    ok(v) => v, err(_) => hydration,
+  }
+  let updated = set_field(data, "hydration", updated_hyd)
+  save_today(updated)
+}
+
+fn caffeine_mg_for(drink: String) -> Int =
+  match drink {
+    "drip" => 95,
+    "espresso" => 64,
+    "green-tea" => 28,
+    "black-tea" => 47,
+    "energy" => 80,
+    _ => 0,
+  }
+
+effect fn log_caffeine(args: List[String]) -> Unit = {
+  let drink = list.get(args, 0) |> option.unwrap_or("")
+  let mg = caffeine_mg_for(drink)
+  if mg == 0 then {
+    println("error: unknown caffeine type. use: drip / espresso / green-tea / black-tea / energy")
+    process.exit(1)
+  }
+  let flags = parse_flags(list.drop(args, 1))
+  let time_s = get_flag_str(flags, "time") |> option.unwrap_or(now_hhmm())
+
+  let data = load_today()
+  let entry = json.object([
+    ("time", json.from_string(time_s)),
+    ("type", json.from_string(drink)),
+    ("mg", json.from_int(mg)),
+  ])
+  let d1 = append_to_array(data, "caffeine", entry)
+  let hydration = json.get(d1, "hydration") |> option.unwrap_or(json.object([]))
+  let prev_mg = json.get_int(hydration, "caffeine_mg") |> option.unwrap_or(0)
+  let total_mg = prev_mg + mg
+  let updated_hyd = match json.set_path(hydration, json.field(json.root(), "caffeine_mg"), json.from_int(total_mg)) {
+    ok(v) => v, err(_) => hydration,
+  }
+  let updated = set_field(d1, "hydration", updated_hyd)
+  save_today(updated)
+}
+
+fn now_hhmm() -> String = datetime.format(datetime.now(), "HH:mm")
+
+effect fn log_bath(args: List[String]) -> Unit = {
+  let flags = parse_flags(args)
+  let time_s = get_flag_str(flags, "time") |> require_str("time")
+  let temp = get_flag_int(flags, "temp") |> require_int("temp")
+  let duration = get_flag_int(flags, "duration") |> require_int("duration")
+
+  let entry = json.object([
+    ("time", json.from_string(time_s)),
+    ("temp_c", json.from_int(temp)),
+    ("duration_min", json.from_int(duration)),
+  ])
+  let data = load_today()
+  let updated = set_field(data, "bath", entry)
+  save_today(updated)
+}
+
+effect fn log_brush(args: List[String]) -> Unit = {
+  let when = list.get(args, 0) |> option.unwrap_or("")
+  if not (when == "morning" or when == "evening") then {
+    println("error: brush requires `morning` or `evening`")
+    process.exit(1)
+  }
+  let key = if when == "morning" then "brush_morning" else "brush_evening"
+  let data = load_today()
+  let updated = set_nested(data, "oral", key, json.from_bool(true))
+  save_today(updated)
+}
+
+effect fn log_floss(args: List[String]) -> Unit = {
+  let _ = args
+  let data = load_today()
+  let updated = set_nested(data, "oral", "floss", json.from_bool(true))
+  save_today(updated)
+}
+
+effect fn log_light(args: List[String]) -> Unit = {
+  let flags = parse_flags(args)
+  let morning = get_flag_int(flags, "outdoor-morning")
+  let total = get_flag_int(flags, "outdoor-total")
+
+  var data = load_today()
+  match morning {
+    some(m) => { data = set_field(data, "outdoor_morning_min", json.from_int(m)) },
+    none => {},
+  }
+  match total {
+    some(t) => { data = set_field(data, "outdoor_total_min", json.from_int(t)) },
+    none => {},
+  }
+  save_today(data)
 }
