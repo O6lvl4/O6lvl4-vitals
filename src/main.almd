@@ -22,6 +22,46 @@ type EvalResult =
   | Fail(String)
   | Skip(String)
 
+// ---------- path resolution ----------
+//
+// `data/` and `rules/` paths are resolved at every call site through
+// these helpers so the binary works from any working directory and the
+// user can override storage with environment variables.
+//
+// Resolution order (first match wins):
+//   1. $VITALS_DATA / $VITALS_RULES env var (explicit override)
+//   2. ./data or ./rules in cwd (legacy / per-repo workflow)
+//   3. $HOME/.local/share/vitals/{data,rules} (default user store)
+
+effect fn data_dir() -> String = {
+  match env.get("VITALS_DATA") {
+    some(p) => p,
+    none => {
+      if fs.exists("data") then "data"
+      else {
+        let home = env.get("HOME") |> option.unwrap_or(".")
+        home + "/.local/share/vitals/data"
+      }
+    },
+  }
+}
+
+effect fn rules_dir() -> String = {
+  match env.get("VITALS_RULES") {
+    some(p) => p,
+    none => {
+      if fs.exists("rules") then "rules"
+      else {
+        let home = env.get("HOME") |> option.unwrap_or(".")
+        home + "/.local/share/vitals/rules"
+      }
+    },
+  }
+}
+
+effect fn data_path(date: String) -> String = data_dir() + "/" + date + ".json"
+effect fn rules_path(file: String) -> String = rules_dir() + "/" + file
+
 effect fn main() -> Unit = {
   let args = env.args()
   let cmd = list.get(args, 0) |> option.unwrap_or("help")
@@ -78,7 +118,7 @@ fn print_log_help() -> Unit = {
 // ---------- init ----------
 
 effect fn cmd_init() -> Unit = {
-  let dirs = ["data", "rules"]
+  let dirs = [data_dir(), rules_dir()]
   for d in dirs {
     if fs.exists(d) then {
       println(d + "/ already exists")
@@ -93,7 +133,7 @@ effect fn cmd_init() -> Unit = {
 
 effect fn cmd_show(args: List[String]) -> Unit = {
   let date = list.get(args, 0) |> option.unwrap_or(today())
-  let path = "data/" + date + ".json"
+  let path = data_path(date)
   if not fs.exists(path) then {
     println("No data for " + date + " at " + path)
   } else {
@@ -108,14 +148,15 @@ fn today() -> String = datetime.format(datetime.now(), "YYYY-MM-DD")
 // ---------- rules ----------
 
 effect fn cmd_rules() -> Unit = {
-  if not fs.exists("rules") then {
+  let rdir = rules_dir()
+  if not fs.exists(rdir) then {
     println("rules/ does not exist. Run 'vitals init' first.")
   } else {
-    let files = fs.list_dir("rules")!
+    let files = fs.list_dir(rdir)!
     let json_files = files |> list.filter((f) => string.ends_with(f, ".json"))
     let sorted = list.sort(json_files)
     for file in sorted {
-      let path = "rules/" + file
+      let path = rules_path(file)
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
       let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
@@ -151,11 +192,12 @@ effect fn cmd_report(args: List[String]) -> Unit = {
   println("")
   println("- Days logged: " + int.to_string(days_with_data) + " / " + int.to_string(window_days))
 
-  if not fs.exists("rules") then {
+  let rdir = rules_dir()
+  if not fs.exists(rdir) then {
     println("")
     println("(no rules loaded — run `vitals init`)")
   } else {
-    let files = fs.list_dir("rules")! |> list.filter((f) => string.ends_with(f, ".json"))
+    let files = fs.list_dir(rdir)! |> list.filter((f) => string.ends_with(f, ".json"))
     let sorted = sort_files_by_priority(files)
 
     let summary = compute_protocol_summary(sorted, dates)
@@ -170,7 +212,7 @@ effect fn cmd_report(args: List[String]) -> Unit = {
     println("| Protocol | ✓ Pass | ✗ Fail | - Skip | Total | Pass % |")
     println("|---|---:|---:|---:|---:|---:|")
     for file in sorted {
-      let path = "rules/" + file
+      let path = rules_path(file)
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
       let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
@@ -190,7 +232,7 @@ effect fn cmd_report(args: List[String]) -> Unit = {
     println("")
     var any_fail = false
     for file in sorted {
-      let path = "rules/" + file
+      let path = rules_path(file)
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
       let _proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
@@ -260,7 +302,7 @@ effect fn collect_priorities(files: List[String], acc: List[(Int, String)]) -> L
 }
 
 effect fn read_file_priority(file: String) -> Int = {
-  let path = "rules/" + file
+  let path = rules_path(file)
   let content = fs.read_text(path)!
   let obj = json.parse(content)!
   json.get_int(obj, "priority") |> option.unwrap_or(99)
@@ -276,7 +318,7 @@ effect fn compute_streaks(files: List[String], end_date: String) -> List[(Int, S
   else {
     let f = list.first(files) |> option.unwrap_or("")
     let rest = list.drop(files, 1)
-    let path = "rules/" + f
+    let path = rules_path(f)
     let content = fs.read_text(path)!
     let obj = json.parse(content)!
     let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
@@ -318,7 +360,8 @@ effect fn count_data_days(dates: List[String]) -> Int = {
   else {
     let d = list.first(dates) |> option.unwrap_or("")
     let rest = list.drop(dates, 1)
-    let here = if fs.exists("data/" + d + ".json") then 1 else 0
+    let p = data_path(d)
+    let here = if fs.exists(p) then 1 else 0
     here + count_data_days(rest)
   }
 }
@@ -329,7 +372,7 @@ effect fn compute_protocol_summary(files: List[String], dates: List[String]) -> 
   else {
     let f = list.first(files) |> option.unwrap_or("")
     let rest = list.drop(files, 1)
-    let path = "rules/" + f
+    let path = rules_path(f)
     let content = fs.read_text(path)!
     let obj = json.parse(content)!
     let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
@@ -387,7 +430,7 @@ effect fn collect_priority_summaries(files: List[String], end_date: String) -> L
 }
 
 effect fn protocol_priority_and_summary(file: String, end_date: String) -> (Int, Int, String) = {
-  let path = "rules/" + file
+  let path = rules_path(file)
   let content = fs.read_text(path)!
   let obj = json.parse(content)!
   let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
@@ -416,21 +459,22 @@ effect fn count_today_fails(rules: List[json.Value], end_date: String) -> Int = 
 
 effect fn cmd_check(args: List[String]) -> Unit = {
   let date = list.get(args, 0) |> option.unwrap_or(today())
-  let data_path = "data/" + date + ".json"
-  if not fs.exists(data_path) then {
-    println("No data for " + date + " at " + data_path)
+  let path = data_path(date)
+  if not fs.exists(path) then {
+    println("No data for " + date + " at " + path)
   } else {
-    do_check(date, data_path)
+    do_check(date, path)
   }
 }
 
 effect fn do_check(date: String, data_path: String) -> Unit = {
   let _ = data_path  // kept for backward call signature; window-aware evaluator loads per-rule
 
-  if not fs.exists("rules") then {
+  let rdir = rules_dir()
+  if not fs.exists(rdir) then {
     println("rules/ does not exist. Run 'vitals init' first.")
   } else {
-    let files = fs.list_dir("rules")!
+    let files = fs.list_dir(rdir)!
     let json_files = files |> list.filter((f) => string.ends_with(f, ".json"))
     let sorted = list.sort(json_files)
 
@@ -443,7 +487,7 @@ effect fn do_check(date: String, data_path: String) -> Unit = {
     var failed_ids: List[String] = []
 
     for file in sorted {
-      let path = "rules/" + file
+      let path = rules_path(file)
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
       let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
@@ -516,7 +560,7 @@ fn evaluate_inner(rule: json.Value, data: json.Value) -> EvalResult = {
 }
 
 effect fn load_day(date: String) -> Option[json.Value] = {
-  let path = "data/" + date + ".json"
+  let path = data_path(date)
   if not fs.exists(path) then none
   else {
     let content = fs.read_text(path)!
@@ -847,7 +891,7 @@ effect fn cmd_log(args: List[String]) -> Unit = {
 
 effect fn load_today() -> json.Value = {
   let date = today()
-  let path = "data/" + date + ".json"
+  let path = data_path(date)
   if not fs.exists(path) then {
     let _ = fs.mkdir_p("data")!
     json.object([("date", json.from_string(date))])
@@ -859,9 +903,11 @@ effect fn load_today() -> json.Value = {
 
 effect fn save_today(value: json.Value) -> Unit = {
   let date = today()
-  let path = "data/" + date + ".json"
+  let dir = data_dir()
+  let _ = fs.mkdir_p(dir)!
+  let path = dir + "/" + date + ".json"
   let _ = fs.write(path, json.stringify_pretty(value))!
-  println("→ data/" + date + ".json")
+  println("→ " + path)
 }
 
 fn set_field(data: json.Value, field: String, value: json.Value) -> json.Value =
@@ -936,24 +982,6 @@ fn get_flag_bool(flags: Map[String, String], key: String) -> Bool =
   match map.get(flags, key) {
     some("true") => true,
     _ => false,
-  }
-
-effect fn require_str(opt: Option[String], name: String) -> String =
-  match opt {
-    some(v) => v,
-    none => {
-      println("error: missing required flag --" + name)
-      process.exit(1)
-    },
-  }
-
-effect fn require_int(opt: Option[Int], name: String) -> Int =
-  match opt {
-    some(v) => v,
-    none => {
-      println("error: missing or invalid required flag --" + name)
-      process.exit(1)
-    },
   }
 
 // Prompt-or-flag helpers. When a flag is missing, drop into a stdin

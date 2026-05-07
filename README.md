@@ -108,7 +108,17 @@ vitals log evening --focus 220
 
 ## Data model
 
-### 日次データ: `data/YYYY-MM-DD.json`
+### Storage paths
+
+`data/` と `rules/` の場所は次の順で解決されます（最初に見つかったものを使用）：
+
+1. 環境変数 `$VITALS_DATA` / `$VITALS_RULES`（明示的オーバーライド）
+2. cwd の `./data` / `./rules`（リポジトリ内で動かすとき）
+3. `$HOME/.local/share/vitals/{data,rules}`（デフォルトのユーザストア）
+
+これにより、リポジトリの外から `vitals` バイナリを実行してもデータは `~/.local/share/vitals/data/` に蓄積されます。複数マシンで同期したい場合は `VITALS_DATA=$HOME/Dropbox/vitals` のように指定すれば即座に切り替え可能。
+
+### 日次データ: `<data_dir>/YYYY-MM-DD.json`
 
 ```json
 {
