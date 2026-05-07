@@ -1,0 +1,70 @@
+{
+  "protocol": "P05",
+  "name": "水分・カフェイン",
+  "priority": 5,
+  "rules": [
+    {
+      "id": "P05-INV-1",
+      "type": "invariant",
+      "description": "水分 ≥ 体重(kg) × 30ml（暫定: 1800ml）",
+      "metric": "hydration.water_ml",
+      "operator": "gte",
+      "threshold": 1800,
+      "window": "1d",
+      "recovery_ref": "p05-hydration.md#復旧手順"
+    },
+    {
+      "id": "P05-INV-2",
+      "type": "invariant",
+      "description": "カフェイン ≤ 400mg/日",
+      "metric": "hydration.caffeine_mg",
+      "operator": "lte",
+      "threshold": 400,
+      "window": "1d",
+      "recovery_ref": "p05-hydration.md#復旧手順"
+    },
+    {
+      "id": "P05-INV-3",
+      "type": "invariant",
+      "description": "14:00以降のカフェイン摂取なし",
+      "metric": "caffeine_after_14_count",
+      "operator": "lte",
+      "threshold": 0,
+      "window": "1d",
+      "recovery_ref": "p05-hydration.md#復旧手順"
+    },
+    {
+      "id": "P05-INV-4",
+      "type": "invariant",
+      "description": "起床直後60分はカフェイン禁止",
+      "metric": "caffeine_within_wake60_count",
+      "operator": "lte",
+      "threshold": 0,
+      "window": "1d",
+      "recovery_ref": "p05-hydration.md#復旧手順"
+    },
+    {
+      "id": "P05-VIO-1",
+      "type": "violation",
+      "description": "14時以降の急激な眠気（自己評価4以上）",
+      "metric": "subjective.afternoon_drowsiness",
+      "operator": "gte",
+      "threshold": 4,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p05-hydration.md#復旧手順"
+    },
+    {
+      "id": "P05-VIO-2",
+      "type": "violation",
+      "description": "朝のカフェインなしで動けない（依存兆候）",
+      "metric": "caffeine_dependency_flag",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "monthly",
+      "severity": "warn",
+      "recovery_ref": "p05-hydration.md#復旧手順",
+      "skip_until_metric_available": true
+    }
+  ]
+}

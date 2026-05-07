@@ -1,0 +1,58 @@
+{
+  "protocol": "P12",
+  "name": "口腔ケア",
+  "priority": 12,
+  "rules": [
+    {
+      "id": "P12-INV-1a",
+      "type": "invariant",
+      "description": "朝のブラッシング実施",
+      "metric": "oral.brush_morning",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p12-oral-care.md#復旧手順"
+    },
+    {
+      "id": "P12-INV-1b",
+      "type": "invariant",
+      "description": "夜のブラッシング実施",
+      "metric": "oral.brush_evening",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p12-oral-care.md#復旧手順"
+    },
+    {
+      "id": "P12-INV-2",
+      "type": "invariant",
+      "description": "1日1回フロス",
+      "metric": "oral.floss",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p12-oral-care.md#復旧手順"
+    },
+    {
+      "id": "P12-INV-4",
+      "type": "invariant",
+      "description": "前回の歯科検診から ≤ 180日",
+      "metric": "days_since_dental_checkup",
+      "operator": "lte",
+      "threshold": 180,
+      "window": "rolling",
+      "recovery_ref": "p12-oral-care.md#復旧手順"
+    },
+    {
+      "id": "P12-VIO-1",
+      "type": "violation",
+      "description": "歯肉出血・口臭などの口腔症状",
+      "metric": "subjective.oral_symptom_flag",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p12-oral-care.md#復旧手順"
+    }
+  ]
+}

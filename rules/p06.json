@@ -1,0 +1,47 @@
+{
+  "protocol": "P06",
+  "name": "光・概日リズム",
+  "priority": 2,
+  "rules": [
+    {
+      "id": "P06-INV-2",
+      "type": "invariant",
+      "description": "朝の屋外光 ≥ 10分",
+      "metric": "outdoor_morning_min",
+      "operator": "gte",
+      "threshold": 10,
+      "window": "1d",
+      "recovery_ref": "p06-light.md#復旧手順"
+    },
+    {
+      "id": "P06-INV-3",
+      "type": "invariant",
+      "description": "日中の屋外光 累計 ≥ 30分",
+      "metric": "outdoor_total_min",
+      "operator": "gte",
+      "threshold": 30,
+      "window": "1d",
+      "recovery_ref": "p06-light.md#復旧手順"
+    },
+    {
+      "id": "P06-INV-4",
+      "type": "invariant",
+      "description": "日没後リビング ≤ 100lux（環境設定OK）",
+      "metric": "evening_dim_ok",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p06-light.md#復旧手順"
+    },
+    {
+      "id": "P06-INV-5",
+      "type": "invariant",
+      "description": "就寝60分前 青色光遮断",
+      "metric": "bluelight_cutoff_ok",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p06-light.md#復旧手順"
+    }
+  ]
+}

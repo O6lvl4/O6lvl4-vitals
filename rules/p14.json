@@ -1,0 +1,58 @@
+{
+  "protocol": "P14",
+  "name": "知識管理",
+  "priority": 11,
+  "rules": [
+    {
+      "id": "P14-INV-1",
+      "type": "invariant",
+      "description": "inbox 滞留 < 48h（最古エントリ）",
+      "metric": "knowledge.inbox_oldest_age_h",
+      "operator": "lte",
+      "threshold": 48,
+      "window": "1d",
+      "recovery_ref": "p14-knowledge-management.md#復旧手順"
+    },
+    {
+      "id": "P14-INV-2",
+      "type": "invariant",
+      "description": "SRS due 滞留 ≤ 3日",
+      "metric": "knowledge.srs_overdue_days",
+      "operator": "lte",
+      "threshold": 3,
+      "window": "1d",
+      "recovery_ref": "p14-knowledge-management.md#復旧手順"
+    },
+    {
+      "id": "P14-INV-3",
+      "type": "invariant",
+      "description": "孤立ノートが増えていない（前週比）",
+      "metric": "knowledge.orphan_note_delta_week",
+      "operator": "lte",
+      "threshold": 0,
+      "window": "weekly",
+      "recovery_ref": "p14-knowledge-management.md#復旧手順"
+    },
+    {
+      "id": "P14-INV-4",
+      "type": "invariant",
+      "description": "重複ノート数",
+      "metric": "knowledge.duplicate_note_count",
+      "operator": "lte",
+      "threshold": 0,
+      "window": "1d",
+      "recovery_ref": "p14-knowledge-management.md#復旧手順"
+    },
+    {
+      "id": "P14-VIO-1",
+      "type": "violation",
+      "description": "検索失敗が週2回以上",
+      "metric": "subjective.search_failure_count_week",
+      "operator": "weekly_count_gte",
+      "threshold": 2,
+      "window": "7d",
+      "severity": "warn",
+      "recovery_ref": "p14-knowledge-management.md#復旧手順"
+    }
+  ]
+}

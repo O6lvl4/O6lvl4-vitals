@@ -1,0 +1,112 @@
+{
+  "protocol": "P04",
+  "name": "食事",
+  "priority": 4,
+  "rules": [
+    {
+      "id": "P04-INV-1-breakfast",
+      "type": "invariant",
+      "description": "朝食時刻ずれ ≤ ±30分（基準07:30）",
+      "metric": "meals.breakfast.time",
+      "operator": "time_drift_lte",
+      "anchor": "07:30",
+      "threshold_min": 30,
+      "window": "1d",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    },
+    {
+      "id": "P04-INV-1-lunch",
+      "type": "invariant",
+      "description": "昼食時刻ずれ ≤ ±30分（基準12:30）",
+      "metric": "meals.lunch.time",
+      "operator": "time_drift_lte",
+      "anchor": "12:30",
+      "threshold_min": 30,
+      "window": "1d",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    },
+    {
+      "id": "P04-INV-1-dinner",
+      "type": "invariant",
+      "description": "夕食時刻ずれ ≤ ±30分（基準19:00）",
+      "metric": "meals.dinner.time",
+      "operator": "time_drift_lte",
+      "anchor": "19:00",
+      "threshold_min": 30,
+      "window": "1d",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    },
+    {
+      "id": "P04-INV-2-breakfast",
+      "type": "invariant",
+      "description": "朝食タンパク質 ≥ 20g",
+      "metric": "meals.breakfast.protein_ok",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    },
+    {
+      "id": "P04-INV-2-lunch",
+      "type": "invariant",
+      "description": "昼食タンパク質 ≥ 20g",
+      "metric": "meals.lunch.protein_ok",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    },
+    {
+      "id": "P04-INV-2-dinner",
+      "type": "invariant",
+      "description": "夕食タンパク質 ≥ 20g",
+      "metric": "meals.dinner.protein_ok",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    },
+    {
+      "id": "P04-INV-4",
+      "type": "invariant",
+      "description": "就寝3時間前以降の固形食禁止",
+      "metric": "last_solid_meal_ok",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    },
+    {
+      "id": "P04-INV-5",
+      "type": "invariant",
+      "description": "加工糖含有飲料禁止",
+      "metric": "processed_sugar_drink_count",
+      "operator": "lte",
+      "threshold": 0,
+      "window": "1d",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    },
+    {
+      "id": "P04-VIO-1",
+      "type": "violation",
+      "description": "食後60〜120分の眠気・集中低下（自己評価4以上）",
+      "metric": "max_post_meal_drowsiness",
+      "operator": "gte",
+      "threshold": 4,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    },
+    {
+      "id": "P04-VIO-3",
+      "type": "violation",
+      "description": "空腹崩壊が週3回以上",
+      "metric": "hunger_crash_count_week",
+      "operator": "weekly_count_gte",
+      "threshold": 3,
+      "window": "7d",
+      "severity": "warn",
+      "recovery_ref": "p04-diet.md#復旧手順"
+    }
+  ]
+}

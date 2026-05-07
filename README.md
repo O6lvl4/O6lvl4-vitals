@@ -1,0 +1,150 @@
+# O6lvl4 Vitals
+
+[O6lvl4-protocol](https://github.com/O6lvl4/O6lvl4-protocol) の14プロトコルへの準拠を **定量的に検査する CLI**。almide で実装。
+
+## What it does
+
+毎日の生活データ（睡眠・食事・運動・呼吸など）と、各プロトコルの不変条件・違反検知ルールを突き合わせ、**どのプロトコルが守られていないか** を出力する。
+
+```
+$ vitals check
+P01 睡眠
+  ✓ INV-1  睡眠時間 ≥ 7h               (7.5h)
+  ✗ INV-2  就寝時刻のずれ ≤ ±15分      (drift: 28m)
+  ✓ VIO-1  入眠潜時 > 30m が3日連続    (no streak)
+
+P04 食事
+  ✓ INV-1  食事時刻ずれ ≤ ±30分
+  ✗ INV-5  加工糖飲料禁止              (1 logged)
+
+総合: 12/14 protocols compliant
+違反: P01-INV-2, P04-INV-5
+推奨復旧手順: protocols/p01-sleep.md#復旧手順, protocols/p04-diet.md#復旧手順
+```
+
+## Install
+
+ツールチェーンは [qusp](https://github.com/O6lvl4/qusp) で管理する。`qusp.toml` で almide のバージョンが固定されている。
+
+```bash
+# 1. qusp を入れる
+brew install o6lvl4/tap/qusp
+# (almide backend が必要なので、qusp >= 0.31。古い場合はソースから:
+#  cargo install --git https://github.com/O6lvl4/qusp --branch feat/almide-backend --bin qusp)
+
+# 2. このリポを clone
+git clone https://github.com/O6lvl4/O6lvl4-vitals.git
+cd O6lvl4-vitals
+
+# 3. qusp.toml に書かれた almide を入れる
+qusp install
+
+# 4. 実行
+qusp run almide run src/main.almd -- check
+```
+
+### バイナリビルド（任意）
+
+```bash
+qusp run almide build src/main.almd -o vitals
+cp vitals ~/.local/bin/
+vitals check
+```
+
+## Usage
+
+```
+vitals init                 Initialize data/ and rules/ directories
+vitals show [date]          Show logged data for date (default: today)
+vitals check [date]         Evaluate all rules against data
+vitals rules                List all loaded rules
+vitals help                 Show this message
+```
+
+Date format: `YYYY-MM-DD`。
+
+## Data model
+
+### 日次データ: `data/YYYY-MM-DD.json`
+
+```json
+{
+  "date": "2026-05-07",
+  "sleep": {
+    "bedtime": "23:35",
+    "wake_time": "07:05",
+    "duration_h": 7.5,
+    "onset_latency_min": 10,
+    "wake_count": 0,
+    "subjective_quality": 4
+  },
+  "subjective": {
+    "mood": 4,
+    "focus_forecast": 4,
+    "pain_flag": false
+  },
+  "meals": [
+    { "type": "breakfast", "time": "07:30", "protein_ok": true,  "carb_size": "M" },
+    { "type": "lunch",     "time": "12:30", "protein_ok": true,  "carb_size": "S" },
+    { "type": "dinner",    "time": "19:00", "protein_ok": true,  "carb_size": "M" }
+  ],
+  "hydration": { "water_ml": 1500, "caffeine_mg": 190 },
+  "caffeine": [
+    { "time": "09:30", "type": "drip" },
+    { "time": "12:30", "type": "drip" }
+  ],
+  "sessions": [
+    { "kind": "cardio", "duration_min": 30, "rpe": 5, "time": "07:30" }
+  ],
+  "bath": { "time": "21:00", "temp_c": 40, "duration_min": 12 },
+  "oral": { "brush_morning": true, "brush_evening": true, "floss": true },
+  "deep_work_min": 220,
+  "outdoor_light_min": 25
+}
+```
+
+すべて optional。記録できなかった項目は欠損扱いで evaluator 側が許容する。
+
+### ルール: `rules/<protocol>.json`
+
+```json
+{
+  "protocol": "P01",
+  "name": "睡眠",
+  "rules": [
+    {
+      "id": "P01-INV-1",
+      "type": "invariant",
+      "description": "睡眠時間 ≥ 7時間",
+      "metric": "sleep.duration_h",
+      "operator": "gte",
+      "threshold": 7,
+      "window": "1d",
+      "recovery_ref": "p01-sleep.md#復旧手順"
+    }
+  ]
+}
+```
+
+## Phase 1 スコープ
+
+| 機能 | 状態 |
+|---|---|
+| ルール定義（14プロトコル分） | JSON で記述（評価器の対応は段階的） |
+| `vitals init` / `show` / `check` | 実装中 |
+| 日次データの手動入力（JSON 直編集） | OK |
+| `vitals log <type>` フラグベース入力 | Phase 2 |
+| iPhone Health 自動取り込み | Phase 2 |
+| RescueTime 連携 | Phase 2 |
+| 違反トレンドダッシュボード | Phase 3 |
+| HRV / Zone 厳密判定（要機器） | 機器導入後 |
+
+## Roadmap
+
+- **Phase 1** (現在): ルール定義 + 評価器 + 手動 JSON 入力
+- **Phase 2**: CLI で対話的に日次フォーム入力 / iPhone Health 取り込み / 集中時間自動計測
+- **Phase 3**: Web ダッシュボード / 朝の通知 / 復旧手順の自動 TODO 化
+
+## License
+
+MIT

@@ -1,0 +1,73 @@
+{
+  "protocol": "P01",
+  "name": "睡眠",
+  "priority": 1,
+  "rules": [
+    {
+      "id": "P01-INV-1",
+      "type": "invariant",
+      "description": "睡眠時間 ≥ 7時間",
+      "metric": "sleep.duration_h",
+      "operator": "gte",
+      "threshold": 7,
+      "window": "1d",
+      "recovery_ref": "p01-sleep.md#復旧手順"
+    },
+    {
+      "id": "P01-INV-2",
+      "type": "invariant",
+      "description": "就寝時刻のずれ ≤ ±15分（基準23:30）",
+      "metric": "sleep.bedtime",
+      "operator": "time_drift_lte",
+      "anchor": "23:30",
+      "threshold_min": 15,
+      "window": "1d",
+      "recovery_ref": "p01-sleep.md#復旧手順"
+    },
+    {
+      "id": "P01-INV-3",
+      "type": "invariant",
+      "description": "起床時刻のずれ ≤ ±30分（基準07:00）",
+      "metric": "sleep.wake_time",
+      "operator": "time_drift_lte",
+      "anchor": "07:00",
+      "threshold_min": 30,
+      "window": "1d",
+      "recovery_ref": "p01-sleep.md#復旧手順"
+    },
+    {
+      "id": "P01-VIO-1",
+      "type": "violation",
+      "description": "入眠潜時 > 30分が3日連続",
+      "metric": "sleep.onset_latency_min",
+      "operator": "gt",
+      "threshold": 30,
+      "window": "3d_consecutive",
+      "severity": "warn",
+      "recovery_ref": "p01-sleep.md#復旧手順"
+    },
+    {
+      "id": "P01-VIO-2",
+      "type": "violation",
+      "description": "中途覚醒 ≥ 2回が3日連続",
+      "metric": "sleep.wake_count",
+      "operator": "gte",
+      "threshold": 2,
+      "window": "3d_consecutive",
+      "severity": "warn",
+      "recovery_ref": "p01-sleep.md#復旧手順"
+    },
+    {
+      "id": "P01-VIO-3",
+      "type": "violation",
+      "description": "起床時 HRV ≤ ベースライン-20%",
+      "metric": "sleep.hrv_ms",
+      "operator": "baseline_pct_lte",
+      "threshold_pct": 80,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p01-sleep.md#復旧手順",
+      "skip_until_metric_available": true
+    }
+  ]
+}

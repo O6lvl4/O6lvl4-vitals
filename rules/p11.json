@@ -1,0 +1,58 @@
+{
+  "protocol": "P11",
+  "name": "入浴・体温調整",
+  "priority": 3,
+  "rules": [
+    {
+      "id": "P11-INV-2",
+      "type": "invariant",
+      "description": "入浴温度 ≤ 41℃",
+      "metric": "bath.temp_c",
+      "operator": "lte",
+      "threshold": 41,
+      "window": "1d",
+      "recovery_ref": "p11-bathing.md#復旧手順"
+    },
+    {
+      "id": "P11-INV-3a",
+      "type": "invariant",
+      "description": "入浴時間 ≥ 10分",
+      "metric": "bath.duration_min",
+      "operator": "gte",
+      "threshold": 10,
+      "window": "1d",
+      "recovery_ref": "p11-bathing.md#復旧手順"
+    },
+    {
+      "id": "P11-INV-3b",
+      "type": "invariant",
+      "description": "入浴時間 ≤ 15分",
+      "metric": "bath.duration_min",
+      "operator": "lte",
+      "threshold": 15,
+      "window": "1d",
+      "recovery_ref": "p11-bathing.md#復旧手順"
+    },
+    {
+      "id": "P11-INV-4",
+      "type": "invariant",
+      "description": "入浴と就寝の間隔 ≥ 90分",
+      "metric": "bath_to_bed_gap_min",
+      "operator": "gte",
+      "threshold": 90,
+      "window": "1d",
+      "recovery_ref": "p11-bathing.md#復旧手順"
+    },
+    {
+      "id": "P11-VIO-1",
+      "type": "violation",
+      "description": "入浴後に逆に目が冴える",
+      "metric": "subjective.post_bath_alertness_high",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p11-bathing.md#復旧手順"
+    }
+  ]
+}

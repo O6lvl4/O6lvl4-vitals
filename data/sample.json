@@ -1,0 +1,45 @@
+{
+  "date": "2026-05-07",
+  "sleep": {
+    "bedtime": "23:35",
+    "wake_time": "07:05",
+    "duration_h": 7.5,
+    "onset_latency_min": 10,
+    "wake_count": 0,
+    "subjective_quality": 4
+  },
+  "subjective": {
+    "mood": 4,
+    "focus_forecast": 4,
+    "pain_flag": false
+  },
+  "meals": [
+    { "type": "breakfast", "time": "07:30", "protein_ok": true,  "carb_size": "M" },
+    { "type": "lunch",     "time": "12:30", "protein_ok": true,  "carb_size": "S" },
+    { "type": "dinner",    "time": "19:00", "protein_ok": true,  "carb_size": "M" }
+  ],
+  "hydration": {
+    "water_ml": 1500,
+    "caffeine_mg": 190
+  },
+  "caffeine": [
+    { "time": "09:30", "type": "drip" },
+    { "time": "12:30", "type": "drip" }
+  ],
+  "sessions": [
+    { "kind": "cardio", "duration_min": 30, "rpe": 5, "time": "07:30" }
+  ],
+  "bath": {
+    "time": "21:00",
+    "temp_c": 40,
+    "duration_min": 12
+  },
+  "oral": {
+    "brush_morning": true,
+    "brush_evening": true,
+    "floss": true
+  },
+  "deep_work_min": 220,
+  "outdoor_light_min": 25,
+  "longest_sit_compliance": true
+}

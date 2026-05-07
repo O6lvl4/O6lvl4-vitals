@@ -1,0 +1,8 @@
+# qusp.toml — toolchain manifest
+# https://github.com/O6lvl4/qusp
+#
+# Install with: qusp install
+# Run with:     qusp run almide <command>
+
+[almide]
+version = "0.15.4"

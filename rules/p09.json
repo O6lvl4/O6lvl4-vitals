@@ -1,0 +1,69 @@
+{
+  "protocol": "P09",
+  "name": "回復",
+  "priority": 6,
+  "rules": [
+    {
+      "id": "P09-INV-1",
+      "type": "invariant",
+      "description": "完全オフ日 ≥ 週1日",
+      "metric": "full_off_days_week",
+      "operator": "weekly_count_gte",
+      "threshold": 1,
+      "window": "7d",
+      "recovery_ref": "p09-recovery.md#復旧手順"
+    },
+    {
+      "id": "P09-INV-2",
+      "type": "invariant",
+      "description": "連続労働日数 ≤ 6日",
+      "metric": "consecutive_work_days",
+      "operator": "lte",
+      "threshold": 6,
+      "window": "rolling",
+      "recovery_ref": "p09-recovery.md#復旧手順"
+    },
+    {
+      "id": "P09-INV-3",
+      "type": "invariant",
+      "description": "月1回の完全静養日が今月実施済",
+      "metric": "monthly_rest_day_taken",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "monthly",
+      "recovery_ref": "p09-recovery.md#復旧手順"
+    },
+    {
+      "id": "P09-INV-4",
+      "type": "invariant",
+      "description": "平日労働 ≤ 10時間",
+      "metric": "daily_work_hours",
+      "operator": "lte",
+      "threshold": 10,
+      "window": "1d",
+      "recovery_ref": "p09-recovery.md#復旧手順"
+    },
+    {
+      "id": "P09-VIO-1",
+      "type": "violation",
+      "description": "休日に休んだ感覚なし（評価2以下）",
+      "metric": "rest_quality_after_off",
+      "operator": "lte",
+      "threshold": 2,
+      "window": "weekly",
+      "severity": "warn",
+      "recovery_ref": "p09-recovery.md#復旧手順"
+    },
+    {
+      "id": "P09-VIO-2",
+      "type": "violation",
+      "description": "週次レビューで集中時間が3週連続減少",
+      "metric": "weekly_focus_min",
+      "operator": "rolling_avg_drop_pct",
+      "threshold_pct": 0,
+      "window": "3w_consecutive",
+      "severity": "warn",
+      "recovery_ref": "p09-recovery.md#復旧手順"
+    }
+  ]
+}

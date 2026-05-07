@@ -1,0 +1,309 @@
+// O6lvl4 vitals — protocol compliance checker
+//
+// Usage:
+//   vitals init           Initialize data/ and rules/ directories
+//   vitals show [date]    Show data for date (default: today)
+//   vitals check [date]   Evaluate rules against data
+//   vitals rules          List all loaded rules
+//   vitals help           Show this message
+//
+// Date format: YYYY-MM-DD
+
+import env
+import fs
+import json
+import datetime
+
+type EvalResult =
+  | Pass
+  | Fail(String)
+  | Skip(String)
+
+effect fn main() -> Unit = {
+  let args = env.args()
+  let cmd = list.get(args, 0) |> option.unwrap_or("help")
+  let rest = list.drop(args, 1)
+  match cmd {
+    "init"  => cmd_init(),
+    "show"  => cmd_show(rest),
+    "check" => cmd_check(rest),
+    "rules" => cmd_rules(),
+    "help"  => print_help(),
+    _ => {
+      println("Unknown command: " + cmd)
+      println("")
+      print_help()
+    },
+  }
+}
+
+fn print_help() -> Unit = {
+  println("vitals — protocol compliance checker")
+  println("")
+  println("Usage:")
+  println("  vitals init           Initialize data/ and rules/ directories")
+  println("  vitals show [date]    Show data for date (default: today)")
+  println("  vitals check [date]   Evaluate rules against data")
+  println("  vitals rules          List all loaded rules")
+  println("  vitals help           Show this message")
+  println("")
+  println("Date format: YYYY-MM-DD")
+}
+
+// ---------- init ----------
+
+effect fn cmd_init() -> Unit = {
+  let dirs = ["data", "rules"]
+  for d in dirs {
+    if fs.exists(d) then {
+      println(d + "/ already exists")
+    } else {
+      let _ = fs.mkdir_p(d)!
+      println("created " + d + "/")
+    }
+  }
+}
+
+// ---------- show ----------
+
+effect fn cmd_show(args: List[String]) -> Unit = {
+  let date = list.get(args, 0) |> option.unwrap_or(today())
+  let path = "data/" + date + ".json"
+  if not fs.exists(path) then {
+    println("No data for " + date + " at " + path)
+  } else {
+    let content = fs.read_text(path)!
+    let value = json.parse(content)!
+    println(json.stringify_pretty(value))
+  }
+}
+
+fn today() -> String = datetime.format(datetime.now(), "YYYY-MM-DD")
+
+// ---------- rules ----------
+
+effect fn cmd_rules() -> Unit = {
+  if not fs.exists("rules") then {
+    println("rules/ does not exist. Run 'vitals init' first.")
+  } else {
+    let files = fs.list_dir("rules")!
+    let json_files = files |> list.filter((f) => string.ends_with(f, ".json"))
+    let sorted = list.sort(json_files)
+    for file in sorted {
+      let path = "rules/" + file
+      let content = fs.read_text(path)!
+      let obj = json.parse(content)!
+      let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
+      let name = json.get_string(obj, "name") |> option.unwrap_or("")
+      println(proto + " " + name + "  (" + file + ")")
+      let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+      for rule in rules {
+        let id = json.get_string(rule, "id") |> option.unwrap_or("?")
+        let desc = json.get_string(rule, "description") |> option.unwrap_or("")
+        let kind = json.get_string(rule, "type") |> option.unwrap_or("?")
+        println("  [" + kind + "] " + id + "  " + desc)
+      }
+      println("")
+    }
+  }
+}
+
+// ---------- check ----------
+
+effect fn cmd_check(args: List[String]) -> Unit = {
+  let date = list.get(args, 0) |> option.unwrap_or(today())
+  let data_path = "data/" + date + ".json"
+  if not fs.exists(data_path) then {
+    println("No data for " + date + " at " + data_path)
+  } else {
+    do_check(date, data_path)
+  }
+}
+
+effect fn do_check(date: String, data_path: String) -> Unit = {
+  let data_content = fs.read_text(data_path)!
+  let data = json.parse(data_content)!
+
+  if not fs.exists("rules") then {
+    println("rules/ does not exist. Run 'vitals init' first.")
+  } else {
+    let files = fs.list_dir("rules")!
+    let json_files = files |> list.filter((f) => string.ends_with(f, ".json"))
+    let sorted = list.sort(json_files)
+
+    println("=== " + date + " ===")
+    println("")
+
+    var total = 0
+    var passed = 0
+    var skipped = 0
+    var failed_ids: List[String] = []
+
+    for file in sorted {
+      let path = "rules/" + file
+      let content = fs.read_text(path)!
+      let obj = json.parse(content)!
+      let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
+      let name = json.get_string(obj, "name") |> option.unwrap_or("")
+      println(proto + " " + name)
+      let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+      for rule in rules {
+        total = total + 1
+        let id = json.get_string(rule, "id") |> option.unwrap_or("?")
+        let desc = json.get_string(rule, "description") |> option.unwrap_or("")
+        let result = evaluate_rule(rule, data)
+        match result {
+          Pass => {
+            passed = passed + 1
+            println("  ✓ " + id + "  " + desc)
+          },
+          Fail(reason) => {
+            failed_ids = failed_ids + [id]
+            println("  ✗ " + id + "  " + desc + "  (" + reason + ")")
+          },
+          Skip(reason) => {
+            skipped = skipped + 1
+            println("  - " + id + "  " + desc + "  [" + reason + "]")
+          },
+        }
+      }
+      println("")
+    }
+
+    println("Summary: " + int.to_string(passed) + "/" + int.to_string(total)
+      + " passed, " + int.to_string(skipped) + " skipped")
+    if list.len(failed_ids) > 0 then {
+      println("Failed: " + string.join(failed_ids, ", "))
+    }
+  }
+}
+
+// ---------- evaluation ----------
+
+fn evaluate_rule(rule: json.Value, data: json.Value) -> EvalResult = {
+  let metric = json.get_string(rule, "metric") |> option.unwrap_or("")
+  let operator = json.get_string(rule, "operator") |> option.unwrap_or("")
+  let kind = json.get_string(rule, "type") |> option.unwrap_or("invariant")
+  let skip_flag = json.get_bool(rule, "skip_until_metric_available") |> option.unwrap_or(false)
+
+  let raw = match get_metric(data, metric) {
+    none => if skip_flag then Skip("metric N/A — feature gated") else Skip("metric missing"),
+    some(v) => eval_op(operator, v, rule),
+  }
+  // For violation rules, the operator describes the *bad* condition.
+  // True (Pass-shaped) → violation detected → emit Fail.
+  if kind == "violation" then invert(raw) else raw
+}
+
+fn invert(r: EvalResult) -> EvalResult = {
+  match r {
+    Pass => Fail("violation condition met"),
+    Fail(reason) => Pass,
+    Skip(reason) => Skip(reason),
+  }
+}
+
+fn get_metric(data: json.Value, path: String) -> Option[json.Value] = {
+  if string.len(path) == 0 then none
+  else {
+    let parts = string.split(path, ".")
+    walk_path(data, parts, 0)
+  }
+}
+
+fn walk_path(data: json.Value, parts: List[String], i: Int) -> Option[json.Value] = {
+  if i >= list.len(parts) then some(data)
+  else {
+    let key = list.get(parts, i) |> option.unwrap_or("")
+    match json.get(data, key) {
+      none => none,
+      some(v) => walk_path(v, parts, i + 1),
+    }
+  }
+}
+
+fn eval_op(operator: String, v: json.Value, rule: json.Value) -> EvalResult = {
+  match operator {
+    "gte" => eval_numeric(v, rule, (a, t) => a >= t),
+    "gt"  => eval_numeric(v, rule, (a, t) => a > t),
+    "lte" => eval_numeric(v, rule, (a, t) => a <= t),
+    "lt"  => eval_numeric(v, rule, (a, t) => a < t),
+    "eq"  => eval_numeric(v, rule, (a, t) => a == t),
+    "time_drift_lte" => eval_time_drift(v, rule),
+    "bool_eq" => eval_bool_eq(v, rule),
+    "baseline_pct_lte" => Skip("baseline-relative ops not yet implemented"),
+    "rolling_avg_drop_pct" => Skip("rolling-window ops not yet implemented"),
+    "consecutive_count_gte" => Skip("consecutive-window ops not yet implemented"),
+    "weekly_count_lte" => Skip("weekly-window ops not yet implemented"),
+    "weekly_count_gte" => Skip("weekly-window ops not yet implemented"),
+    _ => Skip("unsupported operator: " + operator),
+  }
+}
+
+fn eval_numeric(v: json.Value, rule: json.Value, pred: (Float, Float) -> Bool) -> EvalResult = {
+  let threshold_opt = json.get_float(rule, "threshold")
+  let actual_opt = coerce_to_float(v)
+  match (actual_opt, threshold_opt) {
+    (some(a), some(t)) => if pred(a, t) then Pass
+      else Fail("actual=" + float.to_string(a) + ", threshold=" + float.to_string(t)),
+    (none, _) => Fail("metric is not numeric"),
+    (_, none) => Fail("rule threshold missing"),
+  }
+}
+
+fn eval_bool_eq(v: json.Value, rule: json.Value) -> EvalResult = {
+  let expected = json.get_bool(rule, "threshold") |> option.unwrap_or(true)
+  match json.as_bool(v) {
+    none => Fail("metric is not boolean"),
+    some(actual) => if actual == expected then Pass
+      else Fail("actual=" + bool_str(actual) + ", expected=" + bool_str(expected)),
+  }
+}
+
+fn bool_str(b: Bool) -> String = if b then "true" else "false"
+
+fn coerce_to_float(v: json.Value) -> Option[Float] = {
+  match json.as_float(v) {
+    some(f) => some(f),
+    none => match json.as_int(v) {
+      some(i) => some(int.to_float(i)),
+      none => none,
+    },
+  }
+}
+
+fn eval_time_drift(v: json.Value, rule: json.Value) -> EvalResult = {
+  match json.as_string(v) {
+    none => Fail("metric is not a time string"),
+    some(actual_str) => {
+      let anchor = json.get_string(rule, "anchor") |> option.unwrap_or("00:00")
+      let threshold = json.get_int(rule, "threshold_min") |> option.unwrap_or(0)
+      let drift = time_diff_min_wrap(actual_str, anchor)
+      if drift <= threshold then Pass
+      else Fail("drift " + int.to_string(drift) + "m > " + int.to_string(threshold) + "m")
+    },
+  }
+}
+
+// Minute-of-day drift, treating the clock as a 1440-min ring so the
+// shortest distance is reported (e.g. 01:30 vs 23:30 → 120, not 1320).
+fn time_diff_min_wrap(a: String, b: String) -> Int = {
+  let raw = int.abs(to_minutes(a) - to_minutes(b))
+  let wrapped = 1440 - raw
+  if raw < wrapped then raw else wrapped
+}
+
+fn to_minutes(s: String) -> Int = {
+  let parts = string.split(s, ":")
+  let h_str = list.get(parts, 0) |> option.unwrap_or("0")
+  let m_str = list.get(parts, 1) |> option.unwrap_or("0")
+  let h = match int.parse(string.trim(h_str)) {
+    ok(v) => v,
+    err(_) => 0,
+  }
+  let m = match int.parse(string.trim(m_str)) {
+    ok(v) => v,
+    err(_) => 0,
+  }
+  h * 60 + m
+}

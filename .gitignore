@@ -1,0 +1,8 @@
+target/
+.almide/
+*.bin
+.DS_Store
+
+# Personal data — do not commit
+data/*.json
+!data/sample.json

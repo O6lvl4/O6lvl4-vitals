@@ -1,0 +1,39 @@
+{
+  "protocol": "P10",
+  "name": "計測（メタ）",
+  "priority": 13,
+  "rules": [
+    {
+      "id": "P10-INV-2",
+      "type": "invariant",
+      "description": "毎朝同条件で測定（朝のフォーム送信済み）",
+      "metric": "morning_log_completed",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p10-measurement.md#復旧手順"
+    },
+    {
+      "id": "P10-VIO-1",
+      "type": "violation",
+      "description": "深い集中時間 7日平均 前週比-20%",
+      "metric": "deep_work_min",
+      "operator": "rolling_avg_drop_pct",
+      "threshold_pct": 20,
+      "window": "7d",
+      "severity": "warn",
+      "recovery_ref": "p10-measurement.md#復旧手順"
+    },
+    {
+      "id": "P10-VIO-2",
+      "type": "violation",
+      "description": "主観スコア合計が3日連続平均以下",
+      "metric": "subjective_score_sum",
+      "operator": "consecutive_count_gte",
+      "threshold": 3,
+      "window": "3d_consecutive",
+      "severity": "warn",
+      "recovery_ref": "p10-measurement.md#復旧手順"
+    }
+  ]
+}

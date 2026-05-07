@@ -1,0 +1,58 @@
+{
+  "protocol": "P07",
+  "name": "座位・姿勢",
+  "priority": 9,
+  "rules": [
+    {
+      "id": "P07-INV-1",
+      "type": "invariant",
+      "description": "連続座位 ≤ 90分（タイマー遵守）",
+      "metric": "longest_sit_compliance",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p07-posture.md#復旧手順"
+    },
+    {
+      "id": "P07-INV-2",
+      "type": "invariant",
+      "description": "立位/歩行 累計 ≥ 120分",
+      "metric": "standing_min_total",
+      "operator": "gte",
+      "threshold": 120,
+      "window": "1d",
+      "recovery_ref": "p07-posture.md#復旧手順"
+    },
+    {
+      "id": "P07-INV-3",
+      "type": "invariant",
+      "description": "スタンディング時間 ≥ 60分/日",
+      "metric": "standing_desk_min",
+      "operator": "gte",
+      "threshold": 60,
+      "window": "1d",
+      "recovery_ref": "p07-posture.md#復旧手順"
+    },
+    {
+      "id": "P07-INV-4",
+      "type": "invariant",
+      "description": "歩数 ≥ 5,000",
+      "metric": "steps_total",
+      "operator": "gte",
+      "threshold": 5000,
+      "window": "1d",
+      "recovery_ref": "p07-posture.md#復旧手順"
+    },
+    {
+      "id": "P07-VIO-1",
+      "type": "violation",
+      "description": "夕方の腰痛・首こり",
+      "metric": "subjective.evening_pain_flag",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p07-posture.md#復旧手順"
+    }
+  ]
+}

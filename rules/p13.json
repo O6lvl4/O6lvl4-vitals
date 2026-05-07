@@ -1,0 +1,60 @@
+{
+  "protocol": "P13",
+  "name": "呼吸",
+  "priority": 6,
+  "rules": [
+    {
+      "id": "P13-INV-1",
+      "type": "invariant",
+      "description": "鼻呼吸が default になっている（自己評価4以上）",
+      "metric": "subjective.nose_breathing_default",
+      "operator": "gte",
+      "threshold": 4,
+      "window": "1d",
+      "recovery_ref": "p13-breathing.md#復旧手順"
+    },
+    {
+      "id": "P13-INV-2",
+      "type": "invariant",
+      "description": "強度の高い呼吸法 ≤ 1日5分",
+      "metric": "intense_breathing_min",
+      "operator": "lte",
+      "threshold": 5,
+      "window": "1d",
+      "recovery_ref": "p13-breathing.md#復旧手順"
+    },
+    {
+      "id": "P13-VIO-1",
+      "type": "violation",
+      "description": "日中無意識に口呼吸している",
+      "metric": "subjective.mouth_breathing_noticed",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p13-breathing.md#復旧手順"
+    },
+    {
+      "id": "P13-VIO-2",
+      "type": "violation",
+      "description": "入眠時の呼吸が浅い・速い",
+      "metric": "subjective.sleep_breathing_shallow",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p13-breathing.md#復旧手順"
+    },
+    {
+      "id": "P13-VIO-3",
+      "type": "violation",
+      "description": "起床時に口の渇き・いびり増",
+      "metric": "subjective.morning_dry_mouth",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p13-breathing.md#復旧手順"
+    }
+  ]
+}

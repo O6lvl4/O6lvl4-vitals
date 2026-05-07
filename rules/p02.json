@@ -1,0 +1,79 @@
+{
+  "protocol": "P02",
+  "name": "有酸素",
+  "priority": 8,
+  "rules": [
+    {
+      "id": "P02-INV-1",
+      "type": "invariant",
+      "description": "1日の総歩数 ≥ 7,000",
+      "metric": "steps_total",
+      "operator": "gte",
+      "threshold": 7000,
+      "window": "1d",
+      "recovery_ref": "p02-cardio.md#復旧手順"
+    },
+    {
+      "id": "P02-INV-2",
+      "type": "invariant",
+      "description": "連続座位 ≤ 90分（90分タイマーを守れたか）",
+      "metric": "longest_sit_compliance",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "recovery_ref": "p02-cardio.md#復旧手順"
+    },
+    {
+      "id": "P02-INV-3",
+      "type": "invariant",
+      "description": "高強度（Zone 4 以上）週 ≤ 2回",
+      "metric": "high_intensity_sessions_week",
+      "operator": "weekly_count_lte",
+      "threshold": 2,
+      "window": "7d",
+      "recovery_ref": "p02-cardio.md#復旧手順"
+    },
+    {
+      "id": "P02-INV-4",
+      "type": "invariant",
+      "description": "高強度の48時間間隔",
+      "metric": "high_intensity_min_gap_h",
+      "operator": "gte",
+      "threshold": 48,
+      "window": "rolling",
+      "recovery_ref": "p02-cardio.md#復旧手順"
+    },
+    {
+      "id": "P02-INV-5",
+      "type": "invariant",
+      "description": "完全静止日（歩数 < 3000）≤ 週1日",
+      "metric": "low_step_days_week",
+      "operator": "weekly_count_lte",
+      "threshold": 1,
+      "window": "7d",
+      "recovery_ref": "p02-cardio.md#復旧手順"
+    },
+    {
+      "id": "P02-VIO-1",
+      "type": "violation",
+      "description": "起床時心拍 ≥ ベースライン+10bpm が3日連続",
+      "metric": "resting_hr_morning",
+      "operator": "baseline_pct_lte",
+      "threshold_pct": 110,
+      "window": "3d_consecutive",
+      "severity": "warn",
+      "recovery_ref": "p02-cardio.md#復旧手順"
+    },
+    {
+      "id": "P02-VIO-2",
+      "type": "violation",
+      "description": "午前集中時間が前週比-30%以上",
+      "metric": "morning_focus_min",
+      "operator": "rolling_avg_drop_pct",
+      "threshold_pct": 30,
+      "window": "7d",
+      "severity": "warn",
+      "recovery_ref": "p02-cardio.md#復旧手順"
+    }
+  ]
+}

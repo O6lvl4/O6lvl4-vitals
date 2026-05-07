@@ -1,0 +1,81 @@
+{
+  "protocol": "P03",
+  "name": "筋力",
+  "priority": 10,
+  "rules": [
+    {
+      "id": "P03-INV-1",
+      "type": "invariant",
+      "description": "週2〜3回の筋トレ",
+      "metric": "strength_sessions_week",
+      "operator": "weekly_count_gte",
+      "threshold": 2,
+      "window": "7d",
+      "recovery_ref": "p03-strength.md#復旧手順"
+    },
+    {
+      "id": "P03-INV-2",
+      "type": "invariant",
+      "description": "1セッション時間 ≤ 40分",
+      "metric": "strength_session.duration_min",
+      "operator": "lte",
+      "threshold": 40,
+      "window": "1d",
+      "recovery_ref": "p03-strength.md#復旧手順"
+    },
+    {
+      "id": "P03-INV-3",
+      "type": "invariant",
+      "description": "RPE ≤ 8",
+      "metric": "strength_session.rpe",
+      "operator": "lte",
+      "threshold": 8,
+      "window": "1d",
+      "recovery_ref": "p03-strength.md#復旧手順"
+    },
+    {
+      "id": "P03-INV-4",
+      "type": "invariant",
+      "description": "同一部位は48時間以上空ける",
+      "metric": "strength_same_part_gap_h",
+      "operator": "gte",
+      "threshold": 48,
+      "window": "rolling",
+      "recovery_ref": "p03-strength.md#復旧手順"
+    },
+    {
+      "id": "P03-VIO-1",
+      "type": "violation",
+      "description": "翌日の集中時間が著しく低下",
+      "metric": "next_day_focus_drop_pct",
+      "operator": "rolling_avg_drop_pct",
+      "threshold_pct": 30,
+      "window": "next_day",
+      "severity": "warn",
+      "recovery_ref": "p03-strength.md#復旧手順"
+    },
+    {
+      "id": "P03-VIO-2",
+      "type": "violation",
+      "description": "関節痛・腰痛の発生",
+      "metric": "subjective.pain_flag",
+      "operator": "bool_eq",
+      "threshold": true,
+      "window": "1d",
+      "severity": "warn",
+      "recovery_ref": "p03-strength.md#復旧手順"
+    },
+    {
+      "id": "P03-VIO-3",
+      "type": "violation",
+      "description": "同重量で2週連続レップ数低下",
+      "metric": "per_exercise_reps_drop_2w",
+      "operator": "consecutive_count_gte",
+      "threshold": 2,
+      "window": "2w",
+      "severity": "warn",
+      "recovery_ref": "p03-strength.md#復旧手順",
+      "skip_until_metric_available": true
+    }
+  ]
+}
