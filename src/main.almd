@@ -159,14 +159,14 @@ effect fn cmd_rules() -> Unit = {
       let path = rules_path(file)
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
-      let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
-      let name = json.get_string(obj, "name") |> option.unwrap_or("")
+      let proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
+      let name = value.get_string(obj, "name") |> option.unwrap_or("")
       println(proto + " " + name + "  (" + file + ")")
-      let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+      let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
       for rule in rules {
-        let id = json.get_string(rule, "id") |> option.unwrap_or("?")
-        let desc = json.get_string(rule, "description") |> option.unwrap_or("")
-        let kind = json.get_string(rule, "type") |> option.unwrap_or("?")
+        let id = value.get_string(rule, "id") |> option.unwrap_or("?")
+        let desc = value.get_string(rule, "description") |> option.unwrap_or("")
+        let kind = value.get_string(rule, "type") |> option.unwrap_or("?")
         println("  [" + kind + "] " + id + "  " + desc)
       }
       println("")
@@ -215,9 +215,9 @@ effect fn cmd_report(args: List[String]) -> Unit = {
       let path = rules_path(file)
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
-      let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
-      let name = json.get_string(obj, "name") |> option.unwrap_or("")
-      let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+      let proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
+      let name = value.get_string(obj, "name") |> option.unwrap_or("")
+      let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
       let stats = aggregate_rule_results(rules, dates)
       let total = stats.0
       let pass = stats.1
@@ -235,16 +235,16 @@ effect fn cmd_report(args: List[String]) -> Unit = {
       let path = rules_path(file)
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
-      let _proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
-      let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+      let _proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
+      let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
       for rule in rules {
         let result = evaluate_rule_at(rule, end_date)
         match result {
           Fail(reason) => {
             any_fail = true
-            let id = json.get_string(rule, "id") |> option.unwrap_or("?")
-            let desc = json.get_string(rule, "description") |> option.unwrap_or("")
-            let recovery = json.get_string(rule, "recovery_ref") |> option.unwrap_or("")
+            let id = value.get_string(rule, "id") |> option.unwrap_or("?")
+            let desc = value.get_string(rule, "description") |> option.unwrap_or("")
+            let recovery = value.get_string(rule, "recovery_ref") |> option.unwrap_or("")
             println("- **" + id + "** — " + desc)
             println("  - reason: " + reason)
             if string.len(recovery) > 0 then {
@@ -305,7 +305,7 @@ effect fn read_file_priority(file: String) -> Int = {
   let path = rules_path(file)
   let content = fs.read_text(path)!
   let obj = json.parse(content)!
-  json.get_int(obj, "priority") |> option.unwrap_or(99)
+  value.get_int(obj, "priority") |> option.unwrap_or(99)
 }
 
 // ---------- streaks ----------
@@ -321,7 +321,7 @@ effect fn compute_streaks(files: List[String], end_date: String) -> List[(Int, S
     let path = rules_path(f)
     let content = fs.read_text(path)!
     let obj = json.parse(content)!
-    let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+    let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
     let here = streaks_for_rules(rules, end_date, [])
     here + compute_streaks(rest, end_date)
   }
@@ -330,11 +330,11 @@ effect fn compute_streaks(files: List[String], end_date: String) -> List[(Int, S
 effect fn streaks_for_rules(rules: List[json.Value], end_date: String, acc: List[(Int, String, String)]) -> List[(Int, String, String)] = {
   if list.is_empty(rules) then acc
   else {
-    let r = list.first(rules) |> option.unwrap_or(json.null())
+    let r = list.first(rules) |> option.unwrap_or(value.null())
     let rest = list.drop(rules, 1)
-    let kind = json.get_string(r, "type") |> option.unwrap_or("invariant")
-    let id = json.get_string(r, "id") |> option.unwrap_or("?")
-    let desc = json.get_string(r, "description") |> option.unwrap_or("")
+    let kind = value.get_string(r, "type") |> option.unwrap_or("invariant")
+    let id = value.get_string(r, "id") |> option.unwrap_or("?")
+    let desc = value.get_string(r, "description") |> option.unwrap_or("")
     if kind != "invariant" then streaks_for_rules(rest, end_date, acc)
     else {
       let n = compute_streak_at(r, end_date, 0, 30)
@@ -375,7 +375,7 @@ effect fn compute_protocol_summary(files: List[String], dates: List[String]) -> 
     let path = rules_path(f)
     let content = fs.read_text(path)!
     let obj = json.parse(content)!
-    let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+    let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
     let here = aggregate_rule_results(rules, dates)
     let tail = compute_protocol_summary(rest, dates)
     (here.0 + tail.0, here.1 + tail.1, here.2 + tail.2, here.3 + tail.3)
@@ -386,7 +386,7 @@ effect fn compute_protocol_summary(files: List[String], dates: List[String]) -> 
 effect fn aggregate_rule_results(rules: List[json.Value], dates: List[String]) -> (Int, Int, Int, Int) = {
   if list.is_empty(rules) then (0, 0, 0, 0)
   else {
-    let r = list.first(rules) |> option.unwrap_or(json.null())
+    let r = list.first(rules) |> option.unwrap_or(value.null())
     let rest_rules = list.drop(rules, 1)
     let here = count_rule_outcomes(r, dates)
     let tail = aggregate_rule_results(rest_rules, dates)
@@ -433,10 +433,10 @@ effect fn protocol_priority_and_summary(file: String, end_date: String) -> (Int,
   let path = rules_path(file)
   let content = fs.read_text(path)!
   let obj = json.parse(content)!
-  let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
-  let name = json.get_string(obj, "name") |> option.unwrap_or("")
-  let priority = json.get_int(obj, "priority") |> option.unwrap_or(99)
-  let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+  let proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
+  let name = value.get_string(obj, "name") |> option.unwrap_or("")
+  let priority = value.get_int(obj, "priority") |> option.unwrap_or(99)
+  let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
   let fails = count_today_fails(rules, end_date)
   let summary = proto + " " + name + " — " + int.to_string(fails) + " failing"
   (priority, fails, summary)
@@ -445,7 +445,7 @@ effect fn protocol_priority_and_summary(file: String, end_date: String) -> (Int,
 effect fn count_today_fails(rules: List[json.Value], end_date: String) -> Int = {
   if list.is_empty(rules) then 0
   else {
-    let r = list.first(rules) |> option.unwrap_or(json.null())
+    let r = list.first(rules) |> option.unwrap_or(value.null())
     let rest = list.drop(rules, 1)
     let here = match evaluate_rule_at(r, end_date) {
       Fail(_) => 1,
@@ -490,14 +490,14 @@ effect fn do_check(date: String, data_path: String) -> Unit = {
       let path = rules_path(file)
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
-      let proto = json.get_string(obj, "protocol") |> option.unwrap_or("?")
-      let name = json.get_string(obj, "name") |> option.unwrap_or("")
+      let proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
+      let name = value.get_string(obj, "name") |> option.unwrap_or("")
       println(proto + " " + name)
-      let rules = json.get_array(obj, "rules") |> option.unwrap_or([])
+      let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
       for rule in rules {
         total = total + 1
-        let id = json.get_string(rule, "id") |> option.unwrap_or("?")
-        let desc = json.get_string(rule, "description") |> option.unwrap_or("")
+        let id = value.get_string(rule, "id") |> option.unwrap_or("?")
+        let desc = value.get_string(rule, "description") |> option.unwrap_or("")
         let result = evaluate_rule_at(rule, date)
         match result {
           Pass => {
@@ -520,7 +520,7 @@ effect fn do_check(date: String, data_path: String) -> Unit = {
     println("Summary: " + int.to_string(passed) + "/" + int.to_string(total)
       + " passed, " + int.to_string(skipped) + " skipped")
     if list.len(failed_ids) > 0 then {
-      println("Failed: " + string.join(failed_ids, ", "))
+      println("Failed: " + list.join(failed_ids, ", "))
     }
   }
 }
@@ -550,9 +550,9 @@ fn parse_window(s: String) -> WindowSpec = {
 }
 
 fn evaluate_inner(rule: json.Value, data: json.Value) -> EvalResult = {
-  let metric = json.get_string(rule, "metric") |> option.unwrap_or("")
-  let operator = json.get_string(rule, "operator") |> option.unwrap_or("")
-  let skip_flag = json.get_bool(rule, "skip_until_metric_available") |> option.unwrap_or(false)
+  let metric = value.get_string(rule, "metric") |> option.unwrap_or("")
+  let operator = value.get_string(rule, "operator") |> option.unwrap_or("")
+  let skip_flag = value.get_bool(rule, "skip_until_metric_available") |> option.unwrap_or(false)
   match get_metric(data, metric) {
     none => if skip_flag then Skip("metric N/A — feature gated") else Skip("metric missing"),
     some(v) => eval_op(operator, v, rule),
@@ -572,9 +572,9 @@ effect fn load_day(date: String) -> Option[json.Value] = {
 }
 
 effect fn evaluate_rule_at(rule: json.Value, end_date: String) -> EvalResult = {
-  let kind = json.get_string(rule, "type") |> option.unwrap_or("invariant")
-  let operator = json.get_string(rule, "operator") |> option.unwrap_or("")
-  let window_str = json.get_string(rule, "window") |> option.unwrap_or("1d")
+  let kind = value.get_string(rule, "type") |> option.unwrap_or("invariant")
+  let operator = value.get_string(rule, "operator") |> option.unwrap_or("")
+  let window_str = value.get_string(rule, "window") |> option.unwrap_or("1d")
 
   // Operators that prescribe their own window semantics dispatch first;
   // everything else falls through to plain window-based dispatch.
@@ -596,7 +596,7 @@ effect fn evaluate_rule_at(rule: json.Value, end_date: String) -> EvalResult = {
 effect fn eval_single_at(rule: json.Value, date: String) -> EvalResult = {
   match load_day(date) {
     none => {
-      let skip_flag = json.get_bool(rule, "skip_until_metric_available") |> option.unwrap_or(false)
+      let skip_flag = value.get_bool(rule, "skip_until_metric_available") |> option.unwrap_or(false)
       if skip_flag then Skip("metric N/A — feature gated") else Skip("no data for " + date)
     },
     some(data) => evaluate_inner(rule, data),
@@ -635,9 +635,9 @@ effect fn eval_monthly_at(rule: json.Value, end_date: String) -> EvalResult = {
 // non-numeric). Useful for "count of off-days per week" and similar
 // per-day flag aggregates.
 effect fn eval_weekly_count_at(rule: json.Value, end_date: String) -> EvalResult = {
-  let operator = json.get_string(rule, "operator") |> option.unwrap_or("")
-  let metric = json.get_string(rule, "metric") |> option.unwrap_or("")
-  let threshold = json.get_float(rule, "threshold") |> option.unwrap_or(0.0)
+  let operator = value.get_string(rule, "operator") |> option.unwrap_or("")
+  let metric = value.get_string(rule, "metric") |> option.unwrap_or("")
+  let threshold = value.get_float(rule, "threshold") |> option.unwrap_or(0.0)
   let dates = generate_dates_back(end_date, 7)
   let values = collect_metric_floats(metric, dates, [])
   // Weekly counts are only meaningful with a full 7-day history. If
@@ -665,8 +665,8 @@ effect fn eval_weekly_count_at(rule: json.Value, end_date: String) -> EvalResult
 // in `evaluate_rule_at` flips this for `type=violation` so the user
 // sees `Fail` for triggered violations.
 effect fn eval_rolling_drop_pct_at(rule: json.Value, end_date: String) -> EvalResult = {
-  let metric = json.get_string(rule, "metric") |> option.unwrap_or("")
-  let threshold_pct = json.get_float(rule, "threshold_pct") |> option.unwrap_or(0.0)
+  let metric = value.get_string(rule, "metric") |> option.unwrap_or("")
+  let threshold_pct = value.get_float(rule, "threshold_pct") |> option.unwrap_or(0.0)
 
   let dates = generate_dates_back(end_date, 14)
   let values = collect_metric_floats(metric, dates, [])
@@ -691,7 +691,7 @@ fn avg_pairs(values: List[(Bool, Float)]) -> Float = {
   let nums = values |> list.map((p) => p.1)
   let sum = nums |> list.fold(0.0, (a: Float, b: Float) => a + b)
   let n = list.len(nums)
-  if n == 0 then 0.0 else sum / int.to_float(n)
+  if n == 0 then 0.0 else sum / float.from(n)
 }
 
 // Returns (had_data_for_day, value_or_zero) per day, oldest first.
@@ -726,7 +726,7 @@ fn parse_date(s: String) -> Int = {
   let y = parse_int_or_zero(list.get(parts, 0) |> option.unwrap_or("0"))
   let m = parse_int_or_zero(list.get(parts, 1) |> option.unwrap_or("0"))
   let d = parse_int_or_zero(list.get(parts, 2) |> option.unwrap_or("0"))
-  datetime.from_parts(y, m, d, 0, 0, 0)
+  datetime.from_parts(y, m, d, 0, 0, 0) ?? 0
 }
 
 fn parse_int_or_zero(s: String) -> Int =
@@ -769,7 +769,7 @@ fn walk_path(data: json.Value, parts: List[String], i: Int) -> Option[json.Value
   if i >= list.len(parts) then some(data)
   else {
     let key = list.get(parts, i) |> option.unwrap_or("")
-    match json.get(data, key) {
+    match value.get(data, key) {
       none => none,
       some(v) => walk_path(v, parts, i + 1),
     }
@@ -795,7 +795,7 @@ fn eval_op(operator: String, v: json.Value, rule: json.Value) -> EvalResult = {
 }
 
 fn eval_numeric(v: json.Value, rule: json.Value, pred: (Float, Float) -> Bool) -> EvalResult = {
-  let threshold_opt = json.get_float(rule, "threshold")
+  let threshold_opt = value.get_float(rule, "threshold")
   let actual_opt = coerce_to_float(v)
   match (actual_opt, threshold_opt) {
     (some(a), some(t)) => if pred(a, t) then Pass
@@ -806,8 +806,8 @@ fn eval_numeric(v: json.Value, rule: json.Value, pred: (Float, Float) -> Bool) -
 }
 
 fn eval_bool_eq(v: json.Value, rule: json.Value) -> EvalResult = {
-  let expected = json.get_bool(rule, "threshold") |> option.unwrap_or(true)
-  match json.as_bool(v) {
+  let expected = value.get_bool(rule, "threshold") |> option.unwrap_or(true)
+  match value.as_bool(v)? {
     none => Fail("metric is not boolean"),
     some(actual) => if actual == expected then Pass
       else Fail("actual=" + bool_str(actual) + ", expected=" + bool_str(expected)),
@@ -817,21 +817,21 @@ fn eval_bool_eq(v: json.Value, rule: json.Value) -> EvalResult = {
 fn bool_str(b: Bool) -> String = if b then "true" else "false"
 
 fn coerce_to_float(v: json.Value) -> Option[Float] = {
-  match json.as_float(v) {
+  match value.as_float(v)? {
     some(f) => some(f),
-    none => match json.as_int(v) {
-      some(i) => some(int.to_float(i)),
+    none => match value.as_int(v)? {
+      some(i) => some(float.from(i)),
       none => none,
     },
   }
 }
 
 fn eval_time_drift(v: json.Value, rule: json.Value) -> EvalResult = {
-  match json.as_string(v) {
+  match value.as_string(v)? {
     none => Fail("metric is not a time string"),
     some(actual_str) => {
-      let anchor = json.get_string(rule, "anchor") |> option.unwrap_or("00:00")
-      let threshold = json.get_int(rule, "threshold_min") |> option.unwrap_or(0)
+      let anchor = value.get_string(rule, "anchor") |> option.unwrap_or("00:00")
+      let threshold = value.get_int(rule, "threshold_min") |> option.unwrap_or(0)
       let drift = time_diff_min_wrap(actual_str, anchor)
       if drift <= threshold then Pass
       else Fail("drift " + int.to_string(drift) + "m > " + int.to_string(threshold) + "m")
@@ -894,7 +894,7 @@ effect fn load_today() -> json.Value = {
   let path = data_path(date)
   if not fs.exists(path) then {
     let _ = fs.mkdir_p("data")!
-    json.object([("date", json.from_string(date))])
+    value.object([("date", value.string(date))])
   } else {
     let content = fs.read_text(path)!
     json.parse(content)!
@@ -906,19 +906,19 @@ effect fn save_today(value: json.Value) -> Unit = {
   let dir = data_dir()
   let _ = fs.mkdir_p(dir)!
   let path = dir + "/" + date + ".json"
-  let _ = fs.write(path, json.stringify_pretty(value))!
+  let _ = fs.write_text(path, json.stringify_pretty(value))!
   println("→ " + path)
 }
 
 fn set_field(data: json.Value, field: String, value: json.Value) -> json.Value =
-  match json.set_path(data, json.field(json.root(), field), value) {
+  match value.set_path(data, value.key(value.root(), field), value) {
     ok(v) => v,
     err(_) => data,
   }
 
 fn set_nested(data: json.Value, parent: String, child: String, value: json.Value) -> json.Value = {
-  let parent_val = json.get(data, parent) |> option.unwrap_or(json.object([]))
-  let updated_parent = match json.set_path(parent_val, json.field(json.root(), child), value) {
+  let parent_val = value.get(data, parent) |> option.unwrap_or(value.object([]))
+  let updated_parent = match value.set_path(parent_val, value.key(value.root(), child), value) {
     ok(v) => v,
     err(_) => parent_val,
   }
@@ -926,9 +926,9 @@ fn set_nested(data: json.Value, parent: String, child: String, value: json.Value
 }
 
 fn append_to_array(data: json.Value, field: String, item: json.Value) -> json.Value = {
-  let arr = json.get_array(data, field) |> option.unwrap_or([])
+  let arr = value.get_array(data, field) |> option.unwrap_or([])
   let new_arr = arr + [item]
-  set_field(data, field, json.array(new_arr))
+  set_field(data, field, value.array(new_arr))
 }
 
 // ---------- log: flag parsing ----------
@@ -989,7 +989,7 @@ fn get_flag_bool(flags: Map[String, String], key: String) -> Bool =
 effect fn prompt_str(label: String, default_val: String) -> String = {
   let suffix = if string.len(default_val) > 0 then " [" + default_val + "]" else ""
   io.print(label + suffix + ": ")
-  let line = string.trim(io.read_line())
+  let line = string.trim(io.read_line() ?? "")
   if string.len(line) == 0 then default_val else line
 }
 
@@ -1032,13 +1032,13 @@ effect fn log_morning(args: List[String]) -> Unit = {
 
   let duration_h = compute_sleep_hours(bedtime, wake)
 
-  let sleep = json.object([
-    ("bedtime", json.from_string(bedtime)),
-    ("wake_time", json.from_string(wake)),
-    ("duration_h", json.from_float(duration_h)),
-    ("onset_latency_min", json.from_int(latency)),
-    ("wake_count", json.from_int(wake_count)),
-    ("subjective_quality", json.from_int(quality)),
+  let sleep = value.object([
+    ("bedtime", value.string(bedtime)),
+    ("wake_time", value.string(wake)),
+    ("duration_h", value.float(duration_h)),
+    ("onset_latency_min", value.int(latency)),
+    ("wake_count", value.int(wake_count)),
+    ("subjective_quality", value.int(quality)),
   ])
 
   let data = load_today()
@@ -1050,7 +1050,7 @@ fn compute_sleep_hours(bedtime: String, wake: String) -> Float = {
   let b = to_minutes(bedtime)
   let w = to_minutes(wake)
   let diff = if w >= b then w - b else (1440 - b) + w
-  int.to_float(diff) / 60.0
+  float.from(diff) / 60.0
 }
 
 effect fn log_evening(args: List[String]) -> Unit = {
@@ -1064,39 +1064,39 @@ effect fn log_evening(args: List[String]) -> Unit = {
   let steps = get_flag_int(flags, "steps")
 
   var data = load_today()
-  data = set_field(data, "deep_work_min", json.from_int(focus))
+  data = set_field(data, "deep_work_min", value.int(focus))
 
   let pain_flag = match pain {
     some(_) => true,
     none => false,
   }
-  let subj = json.get(data, "subjective") |> option.unwrap_or(json.object([]))
-  let subj1 = match json.set_path(subj, json.field(json.root(), "pain_flag"), json.from_bool(pain_flag)) {
+  let subj = value.get(data, "subjective") |> option.unwrap_or(value.object([]))
+  let subj1 = match value.set_path(subj, value.key(value.root(), "pain_flag"), value.bool(pain_flag)) {
     ok(v) => v, err(_) => subj,
   }
   let subj2 = match pain {
     none => subj1,
-    some(loc) => match json.set_path(subj1, json.field(json.root(), "pain_location"), json.from_string(loc)) {
+    some(loc) => match value.set_path(subj1, value.key(value.root(), "pain_location"), value.string(loc)) {
       ok(v) => v, err(_) => subj1,
     },
   }
-  let subj3 = match json.set_path(subj2, json.field(json.root(), "hunger_crash_flag"), json.from_bool(hunger)) {
+  let subj3 = match value.set_path(subj2, value.key(value.root(), "hunger_crash_flag"), value.bool(hunger)) {
     ok(v) => v, err(_) => subj2,
   }
   data = set_field(data, "subjective", subj3)
 
   if off_day then {
-    data = set_field(data, "is_off_day", json.from_bool(true))
+    data = set_field(data, "is_off_day", value.bool(true))
   }
   if rest_day then {
-    data = set_field(data, "monthly_rest_day_taken", json.from_bool(true))
+    data = set_field(data, "monthly_rest_day_taken", value.bool(true))
   }
   match work_hours {
-    some(h) => { data = set_field(data, "daily_work_hours", json.from_float(h)) },
+    some(h) => { data = set_field(data, "daily_work_hours", value.float(h)) },
     none => {},
   }
   match steps {
-    some(s) => { data = set_field(data, "steps_total", json.from_int(s)) },
+    some(s) => { data = set_field(data, "steps_total", value.int(s)) },
     none => {},
   }
   save_today(data)
@@ -1122,10 +1122,10 @@ effect fn log_meal(args: List[String]) -> Unit = {
     else prompt_bool("タンパク質 ≥ 20g 取れたか", true)
   let carb = ask_str(get_flag_str(flags, "carb"), "主食量 (S/M/L)", "M")
 
-  let entry = json.object([
-    ("time", json.from_string(time_s)),
-    ("protein_ok", json.from_bool(protein_ok)),
-    ("carb_size", json.from_string(carb)),
+  let entry = value.object([
+    ("time", value.string(time_s)),
+    ("protein_ok", value.bool(protein_ok)),
+    ("carb_size", value.string(carb)),
   ])
 
   let data = load_today()
@@ -1146,16 +1146,16 @@ effect fn log_session(args: List[String]) -> Unit = {
   let strength_kind = get_flag_str(flags, "kind") |> option.unwrap_or("")
 
   let mut_entries = [
-    ("kind", json.from_string(kind)),
-    ("duration_min", json.from_int(duration)),
-    ("rpe", json.from_int(rpe)),
+    ("kind", value.string(kind)),
+    ("duration_min", value.int(duration)),
+    ("rpe", value.int(rpe)),
   ]
-  let with_time = if string.len(time_s) > 0 then mut_entries + [("time", json.from_string(time_s))] else mut_entries
+  let with_time = if string.len(time_s) > 0 then mut_entries + [("time", value.string(time_s))] else mut_entries
   let final_entries = if kind == "strength" and string.len(strength_kind) > 0
-    then with_time + [("strength_kind", json.from_string(strength_kind))]
+    then with_time + [("strength_kind", value.string(strength_kind))]
     else with_time
 
-  let entry = json.object(final_entries)
+  let entry = value.object(final_entries)
   let data = load_today()
   let updated = append_to_array(data, "sessions", entry)
   save_today(updated)
@@ -1171,10 +1171,10 @@ effect fn log_water(args: List[String]) -> Unit = {
     },
   }
   let data = load_today()
-  let hydration = json.get(data, "hydration") |> option.unwrap_or(json.object([]))
-  let prev_water = json.get_int(hydration, "water_ml") |> option.unwrap_or(0)
+  let hydration = value.get(data, "hydration") |> option.unwrap_or(value.object([]))
+  let prev_water = value.get_int(hydration, "water_ml") |> option.unwrap_or(0)
   let total = prev_water + ml
-  let updated_hyd = match json.set_path(hydration, json.field(json.root(), "water_ml"), json.from_int(total)) {
+  let updated_hyd = match value.set_path(hydration, value.key(value.root(), "water_ml"), value.int(total)) {
     ok(v) => v, err(_) => hydration,
   }
   let updated = set_field(data, "hydration", updated_hyd)
@@ -1202,16 +1202,16 @@ effect fn log_caffeine(args: List[String]) -> Unit = {
   let time_s = get_flag_str(flags, "time") |> option.unwrap_or(now_hhmm())
 
   let data = load_today()
-  let entry = json.object([
-    ("time", json.from_string(time_s)),
-    ("type", json.from_string(drink)),
-    ("mg", json.from_int(mg)),
+  let entry = value.object([
+    ("time", value.string(time_s)),
+    ("type", value.string(drink)),
+    ("mg", value.int(mg)),
   ])
   let d1 = append_to_array(data, "caffeine", entry)
-  let hydration = json.get(d1, "hydration") |> option.unwrap_or(json.object([]))
-  let prev_mg = json.get_int(hydration, "caffeine_mg") |> option.unwrap_or(0)
+  let hydration = value.get(d1, "hydration") |> option.unwrap_or(value.object([]))
+  let prev_mg = value.get_int(hydration, "caffeine_mg") |> option.unwrap_or(0)
   let total_mg = prev_mg + mg
-  let updated_hyd = match json.set_path(hydration, json.field(json.root(), "caffeine_mg"), json.from_int(total_mg)) {
+  let updated_hyd = match value.set_path(hydration, value.key(value.root(), "caffeine_mg"), value.int(total_mg)) {
     ok(v) => v, err(_) => hydration,
   }
   let updated = set_field(d1, "hydration", updated_hyd)
@@ -1226,10 +1226,10 @@ effect fn log_bath(args: List[String]) -> Unit = {
   let temp = ask_int(get_flag_int(flags, "temp"), "温度(℃)", 40)
   let duration = ask_int(get_flag_int(flags, "duration"), "時間(分)", 12)
 
-  let entry = json.object([
-    ("time", json.from_string(time_s)),
-    ("temp_c", json.from_int(temp)),
-    ("duration_min", json.from_int(duration)),
+  let entry = value.object([
+    ("time", value.string(time_s)),
+    ("temp_c", value.int(temp)),
+    ("duration_min", value.int(duration)),
   ])
   let data = load_today()
   let updated = set_field(data, "bath", entry)
@@ -1244,14 +1244,14 @@ effect fn log_brush(args: List[String]) -> Unit = {
   }
   let key = if when == "morning" then "brush_morning" else "brush_evening"
   let data = load_today()
-  let updated = set_nested(data, "oral", key, json.from_bool(true))
+  let updated = set_nested(data, "oral", key, value.bool(true))
   save_today(updated)
 }
 
 effect fn log_floss(args: List[String]) -> Unit = {
   let _ = args
   let data = load_today()
-  let updated = set_nested(data, "oral", "floss", json.from_bool(true))
+  let updated = set_nested(data, "oral", "floss", value.bool(true))
   save_today(updated)
 }
 
@@ -1262,11 +1262,11 @@ effect fn log_light(args: List[String]) -> Unit = {
 
   var data = load_today()
   match morning {
-    some(m) => { data = set_field(data, "outdoor_morning_min", json.from_int(m)) },
+    some(m) => { data = set_field(data, "outdoor_morning_min", value.int(m)) },
     none => {},
   }
   match total {
-    some(t) => { data = set_field(data, "outdoor_total_min", json.from_int(t)) },
+    some(t) => { data = set_field(data, "outdoor_total_min", value.int(t)) },
     none => {},
   }
   save_today(data)
