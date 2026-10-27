@@ -59,20 +59,20 @@ effect fn rules_dir() -> String = {
   }
 }
 
-effect fn data_path(date: String) -> String = data_dir() + "/" + date + ".json"
-effect fn rules_path(file: String) -> String = rules_dir() + "/" + file
+effect fn data_path(date: String) -> String = data_dir()! + "/" + date + ".json"
+effect fn rules_path(file: String) -> String = rules_dir()! + "/" + file
 
 effect fn main() -> Unit = {
   let args = env.args()
   let cmd = list.get(args, 0) |> option.unwrap_or("help")
   let rest = list.drop(args, 1)
   match cmd {
-    "init"   => cmd_init(),
-    "log"    => cmd_log(rest),
-    "show"   => cmd_show(rest),
-    "check"  => cmd_check(rest),
-    "report" => cmd_report(rest),
-    "rules"  => cmd_rules(),
+    "init"   => cmd_init()!,
+    "log"    => cmd_log(rest)!,
+    "show"   => cmd_show(rest)!,
+    "check"  => cmd_check(rest)!,
+    "report" => cmd_report(rest)!,
+    "rules"  => cmd_rules()!,
     "help"   => print_help(),
     _ => {
       println("Unknown command: " + cmd)
@@ -118,7 +118,7 @@ fn print_log_help() -> Unit = {
 // ---------- init ----------
 
 effect fn cmd_init() -> Unit = {
-  let dirs = [data_dir(), rules_dir()]
+  let dirs = [data_dir()!, rules_dir()!]
   for d in dirs {
     if fs.exists(d) then {
       println(d + "/ already exists")
@@ -132,8 +132,8 @@ effect fn cmd_init() -> Unit = {
 // ---------- show ----------
 
 effect fn cmd_show(args: List[String]) -> Unit = {
-  let date = list.get(args, 0) |> option.unwrap_or(today())
-  let path = data_path(date)
+  let date = list.get(args, 0) |> option.unwrap_or(today()!)
+  let path = data_path(date)!
   if not fs.exists(path) then {
     println("No data for " + date + " at " + path)
   } else {
@@ -143,12 +143,12 @@ effect fn cmd_show(args: List[String]) -> Unit = {
   }
 }
 
-fn today() -> String = datetime.format(datetime.now(), "YYYY-MM-DD")
+effect fn today() -> String = datetime.format(datetime.now(), "YYYY-MM-DD")
 
 // ---------- rules ----------
 
 effect fn cmd_rules() -> Unit = {
-  let rdir = rules_dir()
+  let rdir = rules_dir()!
   if not fs.exists(rdir) then {
     println("rules/ does not exist. Run 'vitals init' first.")
   } else {
@@ -156,7 +156,7 @@ effect fn cmd_rules() -> Unit = {
     let json_files = files |> list.filter((f) => string.ends_with(f, ".json"))
     let sorted = list.sort(json_files)
     for file in sorted {
-      let path = rules_path(file)
+      let path = rules_path(file)!
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
       let proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
@@ -178,13 +178,13 @@ effect fn cmd_rules() -> Unit = {
 
 effect fn cmd_report(args: List[String]) -> Unit = {
   let flags = parse_flags(args)
-  let end_date = get_flag_str(flags, "end") |> option.unwrap_or(today())
+  let end_date = get_flag_str(flags, "end") |> option.unwrap_or(today()!)
   let want_month = get_flag_bool(flags, "month")
   let window_days = if want_month then 30 else 7
 
   let dates = generate_dates_back(end_date, window_days)
   let start_date = list.first(dates) |> option.unwrap_or(end_date)
-  let days_with_data = count_data_days(dates)
+  let days_with_data = count_data_days(dates)!
 
   println("# Vitals Report")
   println("")
@@ -192,15 +192,15 @@ effect fn cmd_report(args: List[String]) -> Unit = {
   println("")
   println("- Days logged: " + int.to_string(days_with_data) + " / " + int.to_string(window_days))
 
-  let rdir = rules_dir()
+  let rdir = rules_dir()!
   if not fs.exists(rdir) then {
     println("")
     println("(no rules loaded — run `vitals init`)")
   } else {
     let files = fs.list_dir(rdir)! |> list.filter((f) => string.ends_with(f, ".json"))
-    let sorted = sort_files_by_priority(files)
+    let sorted = sort_files_by_priority(files)!
 
-    let summary = compute_protocol_summary(sorted, dates)
+    let summary = compute_protocol_summary(sorted, dates)!
     println("- Total rule-evaluations: " + int.to_string(summary.0)
       + " (✓ " + int.to_string(summary.1)
       + " / ✗ " + int.to_string(summary.2)
@@ -212,13 +212,13 @@ effect fn cmd_report(args: List[String]) -> Unit = {
     println("| Protocol | ✓ Pass | ✗ Fail | - Skip | Total | Pass % |")
     println("|---|---:|---:|---:|---:|---:|")
     for file in sorted {
-      let path = rules_path(file)
+      let path = rules_path(file)!
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
       let proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
       let name = value.get_string(obj, "name") |> option.unwrap_or("")
       let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
-      let stats = aggregate_rule_results(rules, dates)
+      let stats = aggregate_rule_results(rules, dates)!
       let total = stats.0
       let pass = stats.1
       let fail = stats.2
@@ -232,13 +232,13 @@ effect fn cmd_report(args: List[String]) -> Unit = {
     println("")
     var any_fail = false
     for file in sorted {
-      let path = rules_path(file)
+      let path = rules_path(file)!
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
       let _proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
       let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
       for rule in rules {
-        let result = evaluate_rule_at(rule, end_date)
+        let result = evaluate_rule_at(rule, end_date)!
         match result {
           Fail(reason) => {
             any_fail = true
@@ -260,7 +260,7 @@ effect fn cmd_report(args: List[String]) -> Unit = {
 
     println("## Streaks (consecutive Pass days, ≥ 3 only)")
     println("")
-    let streaks = compute_streaks(sorted, end_date)
+    let streaks = compute_streaks(sorted, end_date)!
     let kept = streaks |> list.filter((t) => t.0 >= 3)
     if list.is_empty(kept) then println("(no qualifying streak yet)")
     else {
@@ -275,7 +275,7 @@ effect fn cmd_report(args: List[String]) -> Unit = {
 
     println("## Recommended focus")
     println("")
-    let prio = recommended_protocols(sorted, end_date)
+    let prio = recommended_protocols(sorted, end_date)!
     if list.is_empty(prio) then println("System is in compliance. Keep the rhythm.")
     else {
       println("Highest-priority protocols with active failures (priority order):")
@@ -286,7 +286,7 @@ effect fn cmd_report(args: List[String]) -> Unit = {
 }
 
 effect fn sort_files_by_priority(files: List[String]) -> List[String] = {
-  let pairs = collect_priorities(files, [])
+  let pairs = collect_priorities(files, [])!
   let sorted = pairs |> list.sort_by((p: (Int, String)) => p.0)
   sorted |> list.map((p: (Int, String)) => p.1)
 }
@@ -296,13 +296,13 @@ effect fn collect_priorities(files: List[String], acc: List[(Int, String)]) -> L
   else {
     let f = list.first(files) |> option.unwrap_or("")
     let rest = list.drop(files, 1)
-    let p = read_file_priority(f)
-    collect_priorities(rest, acc + [(p, f)])
+    let p = read_file_priority(f)!
+    collect_priorities(rest, acc + [(p, f)])!
   }
 }
 
 effect fn read_file_priority(file: String) -> Int = {
-  let path = rules_path(file)
+  let path = rules_path(file)!
   let content = fs.read_text(path)!
   let obj = json.parse(content)!
   value.get_int(obj, "priority") |> option.unwrap_or(99)
@@ -318,12 +318,12 @@ effect fn compute_streaks(files: List[String], end_date: String) -> List[(Int, S
   else {
     let f = list.first(files) |> option.unwrap_or("")
     let rest = list.drop(files, 1)
-    let path = rules_path(f)
+    let path = rules_path(f)!
     let content = fs.read_text(path)!
     let obj = json.parse(content)!
     let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
-    let here = streaks_for_rules(rules, end_date, [])
-    here + compute_streaks(rest, end_date)
+    let here = streaks_for_rules(rules, end_date, [])!
+    here + compute_streaks(rest, end_date)!
   }
 }
 
@@ -335,21 +335,21 @@ effect fn streaks_for_rules(rules: List[json.Value], end_date: String, acc: List
     let kind = value.get_string(r, "type") |> option.unwrap_or("invariant")
     let id = value.get_string(r, "id") |> option.unwrap_or("?")
     let desc = value.get_string(r, "description") |> option.unwrap_or("")
-    if kind != "invariant" then streaks_for_rules(rest, end_date, acc)
+    if kind != "invariant" then streaks_for_rules(rest, end_date, acc)!
     else {
-      let n = compute_streak_at(r, end_date, 0, 30)
-      streaks_for_rules(rest, end_date, acc + [(n, id, desc)])
+      let n = compute_streak_at(r, end_date, 0, 30)!
+      streaks_for_rules(rest, end_date, acc + [(n, id, desc)])!
     }
   }
 }
 
 effect fn compute_streak_at(rule: json.Value, date: String, count: Int, cap: Int) -> Int = {
   if count >= cap then count
-  else match evaluate_rule_at(rule, date) {
+  else match evaluate_rule_at(rule, date)! {
     Pass => {
       let prev_ts = datetime.add_days(parse_date(date), -1)
       let prev_date = datetime.format(prev_ts, "YYYY-MM-DD")
-      compute_streak_at(rule, prev_date, count + 1, cap)
+      compute_streak_at(rule, prev_date, count + 1, cap)!
     },
     _ => count,
   }
@@ -360,9 +360,9 @@ effect fn count_data_days(dates: List[String]) -> Int = {
   else {
     let d = list.first(dates) |> option.unwrap_or("")
     let rest = list.drop(dates, 1)
-    let p = data_path(d)
+    let p = data_path(d)!
     let here = if fs.exists(p) then 1 else 0
-    here + count_data_days(rest)
+    here + count_data_days(rest)!
   }
 }
 
@@ -372,12 +372,12 @@ effect fn compute_protocol_summary(files: List[String], dates: List[String]) -> 
   else {
     let f = list.first(files) |> option.unwrap_or("")
     let rest = list.drop(files, 1)
-    let path = rules_path(f)
+    let path = rules_path(f)!
     let content = fs.read_text(path)!
     let obj = json.parse(content)!
     let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
-    let here = aggregate_rule_results(rules, dates)
-    let tail = compute_protocol_summary(rest, dates)
+    let here = aggregate_rule_results(rules, dates)!
+    let tail = compute_protocol_summary(rest, dates)!
     (here.0 + tail.0, here.1 + tail.1, here.2 + tail.2, here.3 + tail.3)
   }
 }
@@ -388,8 +388,8 @@ effect fn aggregate_rule_results(rules: List[json.Value], dates: List[String]) -
   else {
     let r = list.first(rules) |> option.unwrap_or(value.null())
     let rest_rules = list.drop(rules, 1)
-    let here = count_rule_outcomes(r, dates)
-    let tail = aggregate_rule_results(rest_rules, dates)
+    let here = count_rule_outcomes(r, dates)!
+    let tail = aggregate_rule_results(rest_rules, dates)!
     (here.0 + tail.0, here.1 + tail.1, here.2 + tail.2, here.3 + tail.3)
   }
 }
@@ -399,11 +399,11 @@ effect fn count_rule_outcomes(rule: json.Value, dates: List[String]) -> (Int, In
   else {
     let d = list.first(dates) |> option.unwrap_or("")
     let rest = list.drop(dates, 1)
-    let result = evaluate_rule_at(rule, d)
+    let result = evaluate_rule_at(rule, d)!
     let here_pass = match result { Pass => 1, _ => 0 }
     let here_fail = match result { Fail(_) => 1, _ => 0 }
     let here_skip = match result { Skip(_) => 1, _ => 0 }
-    let tail = count_rule_outcomes(rule, rest)
+    let tail = count_rule_outcomes(rule, rest)!
     (1 + tail.0, here_pass + tail.1, here_fail + tail.2, here_skip + tail.3)
   }
 }
@@ -414,7 +414,7 @@ effect fn recommended_protocols(files: List[String], end_date: String) -> List[S
   // `protocol_priority_and_summary` is an effect fn, so we collect via a
   // recursive helper instead of `list.map` to avoid Result-wrapping under
   // a non-effect lambda.
-  let entries = collect_priority_summaries(files, end_date)
+  let entries = collect_priority_summaries(files, end_date)!
   let with_fails = entries |> list.filter((t) => t.1 > 0)
   with_fails |> list.map((t) => "- " + t.2)
 }
@@ -424,20 +424,20 @@ effect fn collect_priority_summaries(files: List[String], end_date: String) -> L
   else {
     let f = list.first(files) |> option.unwrap_or("")
     let rest = list.drop(files, 1)
-    let here = protocol_priority_and_summary(f, end_date)
-    [here] + collect_priority_summaries(rest, end_date)
+    let here = protocol_priority_and_summary(f, end_date)!
+    [here] + collect_priority_summaries(rest, end_date)!
   }
 }
 
 effect fn protocol_priority_and_summary(file: String, end_date: String) -> (Int, Int, String) = {
-  let path = rules_path(file)
+  let path = rules_path(file)!
   let content = fs.read_text(path)!
   let obj = json.parse(content)!
   let proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
   let name = value.get_string(obj, "name") |> option.unwrap_or("")
   let priority = value.get_int(obj, "priority") |> option.unwrap_or(99)
   let rules = value.get_array(obj, "rules") |> option.unwrap_or([])
-  let fails = count_today_fails(rules, end_date)
+  let fails = count_today_fails(rules, end_date)!
   let summary = proto + " " + name + " — " + int.to_string(fails) + " failing"
   (priority, fails, summary)
 }
@@ -447,30 +447,30 @@ effect fn count_today_fails(rules: List[json.Value], end_date: String) -> Int = 
   else {
     let r = list.first(rules) |> option.unwrap_or(value.null())
     let rest = list.drop(rules, 1)
-    let here = match evaluate_rule_at(r, end_date) {
+    let here = match evaluate_rule_at(r, end_date)! {
       Fail(_) => 1,
       _ => 0,
     }
-    here + count_today_fails(rest, end_date)
+    here + count_today_fails(rest, end_date)!
   }
 }
 
 // ---------- check ----------
 
 effect fn cmd_check(args: List[String]) -> Unit = {
-  let date = list.get(args, 0) |> option.unwrap_or(today())
-  let path = data_path(date)
+  let date = list.get(args, 0) |> option.unwrap_or(today()!)
+  let path = data_path(date)!
   if not fs.exists(path) then {
     println("No data for " + date + " at " + path)
   } else {
-    do_check(date, path)
+    do_check(date, path)!
   }
 }
 
 effect fn do_check(date: String, data_path: String) -> Unit = {
   let _ = data_path  // kept for backward call signature; window-aware evaluator loads per-rule
 
-  let rdir = rules_dir()
+  let rdir = rules_dir()!
   if not fs.exists(rdir) then {
     println("rules/ does not exist. Run 'vitals init' first.")
   } else {
@@ -487,7 +487,7 @@ effect fn do_check(date: String, data_path: String) -> Unit = {
     var failed_ids: List[String] = []
 
     for file in sorted {
-      let path = rules_path(file)
+      let path = rules_path(file)!
       let content = fs.read_text(path)!
       let obj = json.parse(content)!
       let proto = value.get_string(obj, "protocol") |> option.unwrap_or("?")
@@ -498,7 +498,7 @@ effect fn do_check(date: String, data_path: String) -> Unit = {
         total = total + 1
         let id = value.get_string(rule, "id") |> option.unwrap_or("?")
         let desc = value.get_string(rule, "description") |> option.unwrap_or("")
-        let result = evaluate_rule_at(rule, date)
+        let result = evaluate_rule_at(rule, date)!
         match result {
           Pass => {
             passed = passed + 1
@@ -560,7 +560,7 @@ fn evaluate_inner(rule: json.Value, data: json.Value) -> EvalResult = {
 }
 
 effect fn load_day(date: String) -> Option[json.Value] = {
-  let path = data_path(date)
+  let path = data_path(date)!
   if not fs.exists(path) then none
   else {
     let content = fs.read_text(path)!
@@ -579,13 +579,13 @@ effect fn evaluate_rule_at(rule: json.Value, end_date: String) -> EvalResult = {
   // Operators that prescribe their own window semantics dispatch first;
   // everything else falls through to plain window-based dispatch.
   let raw = match operator {
-    "rolling_avg_drop_pct" => eval_rolling_drop_pct_at(rule, end_date),
+    "rolling_avg_drop_pct" => eval_rolling_drop_pct_at(rule, end_date)!,
     "baseline_pct_lte" => Skip("baseline-relative ops not yet implemented"),
     _ => match parse_window(window_str) {
-      WSingle => eval_single_at(rule, end_date),
-      WConsecutive(n) => eval_consecutive_at(rule, end_date, n),
-      WWeeklyCount => eval_weekly_count_at(rule, end_date),
-      WMonthly => eval_monthly_at(rule, end_date),
+      WSingle => eval_single_at(rule, end_date)!,
+      WConsecutive(n) => eval_consecutive_at(rule, end_date, n)!,
+      WWeeklyCount => eval_weekly_count_at(rule, end_date)!,
+      WMonthly => eval_monthly_at(rule, end_date)!,
       WUnsupported(s) => Skip("unsupported window: " + s),
     },
   }
@@ -594,7 +594,7 @@ effect fn evaluate_rule_at(rule: json.Value, end_date: String) -> EvalResult = {
 }
 
 effect fn eval_single_at(rule: json.Value, date: String) -> EvalResult = {
-  match load_day(date) {
+  match load_day(date)! {
     none => {
       let skip_flag = value.get_bool(rule, "skip_until_metric_available") |> option.unwrap_or(false)
       if skip_flag then Skip("metric N/A — feature gated") else Skip("no data for " + date)
@@ -605,7 +605,7 @@ effect fn eval_single_at(rule: json.Value, date: String) -> EvalResult = {
 
 effect fn eval_consecutive_at(rule: json.Value, end_date: String, n: Int) -> EvalResult = {
   let dates = generate_dates_back(end_date, n)
-  let results = collect_results(rule, dates, [])
+  let results = collect_results(rule, dates, [])!
   // Skip if any day's data is missing (not enough history yet).
   let any_skip = results |> list.any((r) => match r { Skip(_) => true, _ => false })
   if any_skip then Skip("insufficient history (need " + int.to_string(n) + " days)")
@@ -621,7 +621,7 @@ effect fn eval_consecutive_at(rule: json.Value, end_date: String, n: Int) -> Eva
 // data exists in the window at all.
 effect fn eval_monthly_at(rule: json.Value, end_date: String) -> EvalResult = {
   let dates = generate_dates_back(end_date, 30)
-  let results = collect_results(rule, dates, [])
+  let results = collect_results(rule, dates, [])!
   let any_pass = results |> list.any((r) => match r { Pass => true, _ => false })
   let all_skip = results |> list.all((r) => match r { Skip(_) => true, _ => false })
   if any_pass then Pass
@@ -639,7 +639,7 @@ effect fn eval_weekly_count_at(rule: json.Value, end_date: String) -> EvalResult
   let metric = value.get_string(rule, "metric") |> option.unwrap_or("")
   let threshold = value.get_float(rule, "threshold") |> option.unwrap_or(0.0)
   let dates = generate_dates_back(end_date, 7)
-  let values = collect_metric_floats(metric, dates, [])
+  let values = collect_metric_floats(metric, dates, [])!
   // Weekly counts are only meaningful with a full 7-day history. If
   // any day in the window has no recorded data file, skip — partial
   // coverage would silently produce false negatives.
@@ -669,7 +669,7 @@ effect fn eval_rolling_drop_pct_at(rule: json.Value, end_date: String) -> EvalRe
   let threshold_pct = value.get_float(rule, "threshold_pct") |> option.unwrap_or(0.0)
 
   let dates = generate_dates_back(end_date, 14)
-  let values = collect_metric_floats(metric, dates, [])
+  let values = collect_metric_floats(metric, dates, [])!
   let days_with_data = values |> list.filter((p) => p.0) |> list.len
   if days_with_data < 14 then
     Skip("insufficient history (need 14 days, got " + int.to_string(days_with_data) + ")")
@@ -700,14 +700,14 @@ effect fn collect_metric_floats(metric: String, dates: List[String], acc: List[(
   else {
     let d = list.first(dates) |> option.unwrap_or("")
     let rest = list.drop(dates, 1)
-    let pair = match load_day(d) {
+    let pair = match load_day(d)! {
       none => (false, 0.0),
       some(data) => match get_metric(data, metric) {
         none => (true, 0.0),
         some(v) => (true, coerce_to_float(v) |> option.unwrap_or(0.0)),
       },
     }
-    collect_metric_floats(metric, rest, acc + [pair])
+    collect_metric_floats(metric, rest, acc + [pair])!
   }
 }
 
@@ -716,8 +716,8 @@ effect fn collect_results(rule: json.Value, dates: List[String], acc: List[EvalR
   else {
     let d = list.first(dates) |> option.unwrap_or("")
     let rest = list.drop(dates, 1)
-    let r = eval_single_at(rule, d)
-    collect_results(rule, rest, acc + [r])
+    let r = eval_single_at(rule, d)!
+    collect_results(rule, rest, acc + [r])!
   }
 }
 
@@ -868,16 +868,16 @@ effect fn cmd_log(args: List[String]) -> Unit = {
   let subcmd = list.get(args, 0) |> option.unwrap_or("help")
   let rest = list.drop(args, 1)
   match subcmd {
-    "morning"  => log_morning(rest),
-    "evening"  => log_evening(rest),
-    "meal"     => log_meal(rest),
-    "session"  => log_session(rest),
-    "water"    => log_water(rest),
-    "caffeine" => log_caffeine(rest),
-    "bath"     => log_bath(rest),
-    "brush"    => log_brush(rest),
-    "floss"    => log_floss(rest),
-    "light"    => log_light(rest),
+    "morning"  => log_morning(rest)!,
+    "evening"  => log_evening(rest)!,
+    "meal"     => log_meal(rest)!,
+    "session"  => log_session(rest)!,
+    "water"    => log_water(rest)!,
+    "caffeine" => log_caffeine(rest)!,
+    "bath"     => log_bath(rest)!,
+    "brush"    => log_brush(rest)!,
+    "floss"    => log_floss(rest)!,
+    "light"    => log_light(rest)!,
     "help"     => print_log_help(),
     _ => {
       println("Unknown log subcommand: " + subcmd)
@@ -890,8 +890,8 @@ effect fn cmd_log(args: List[String]) -> Unit = {
 // ---------- log: file I/O ----------
 
 effect fn load_today() -> json.Value = {
-  let date = today()
-  let path = data_path(date)
+  let date = today()!
+  let path = data_path(date)!
   if not fs.exists(path) then {
     let _ = fs.mkdir_p("data")!
     value.object([("date", value.string(date))])
@@ -902,8 +902,8 @@ effect fn load_today() -> json.Value = {
 }
 
 effect fn save_today(value: json.Value) -> Unit = {
-  let date = today()
-  let dir = data_dir()
+  let date = today()!
+  let dir = data_dir()!
   let _ = fs.mkdir_p(dir)!
   let path = dir + "/" + date + ".json"
   let _ = fs.write_text(path, json.stringify_pretty(value))!
@@ -994,7 +994,7 @@ effect fn prompt_str(label: String, default_val: String) -> String = {
 }
 
 effect fn prompt_int(label: String, default_val: Int) -> Int = {
-  let s = prompt_str(label, int.to_string(default_val))
+  let s = prompt_str(label, int.to_string(default_val))!
   match int.parse(s) {
     ok(n) => n,
     err(_) => default_val,
@@ -1003,7 +1003,7 @@ effect fn prompt_int(label: String, default_val: Int) -> Int = {
 
 effect fn prompt_bool(label: String, default_val: Bool) -> Bool = {
   let def = if default_val then "y" else "n"
-  let raw = prompt_str(label + " (y/n)", def)
+  let raw = prompt_str(label + " (y/n)", def)!
   let s = string.to_lower(raw)
   s == "y" or s == "yes" or s == "true" or s == "1"
 }
@@ -1011,24 +1011,24 @@ effect fn prompt_bool(label: String, default_val: Bool) -> Bool = {
 effect fn ask_str(opt: Option[String], label: String, default_val: String) -> String =
   match opt {
     some(v) => v,
-    none => prompt_str(label, default_val),
+    none => prompt_str(label, default_val)!,
   }
 
 effect fn ask_int(opt: Option[Int], label: String, default_val: Int) -> Int =
   match opt {
     some(v) => v,
-    none => prompt_int(label, default_val),
+    none => prompt_int(label, default_val)!,
   }
 
 // ---------- log: handlers ----------
 
 effect fn log_morning(args: List[String]) -> Unit = {
   let flags = parse_flags(args)
-  let bedtime = ask_str(get_flag_str(flags, "bedtime"), "就寝時刻", "23:30")
-  let wake = ask_str(get_flag_str(flags, "wake"), "起床時刻", "07:00")
-  let latency = ask_int(get_flag_int(flags, "latency"), "入眠まで(分)", 10)
-  let wake_count = ask_int(get_flag_int(flags, "wake-count"), "中途覚醒(回)", 0)
-  let quality = ask_int(get_flag_int(flags, "quality"), "睡眠の質(1-5)", 4)
+  let bedtime = ask_str(get_flag_str(flags, "bedtime"), "就寝時刻", "23:30")!
+  let wake = ask_str(get_flag_str(flags, "wake"), "起床時刻", "07:00")!
+  let latency = ask_int(get_flag_int(flags, "latency"), "入眠まで(分)", 10)!
+  let wake_count = ask_int(get_flag_int(flags, "wake-count"), "中途覚醒(回)", 0)!
+  let quality = ask_int(get_flag_int(flags, "quality"), "睡眠の質(1-5)", 4)!
 
   let duration_h = compute_sleep_hours(bedtime, wake)
 
@@ -1041,9 +1041,9 @@ effect fn log_morning(args: List[String]) -> Unit = {
     ("subjective_quality", value.int(quality)),
   ])
 
-  let data = load_today()
+  let data = load_today()!
   let updated = set_field(data, "sleep", sleep)
-  save_today(updated)
+  save_today(updated)!
 }
 
 fn compute_sleep_hours(bedtime: String, wake: String) -> Float = {
@@ -1055,7 +1055,7 @@ fn compute_sleep_hours(bedtime: String, wake: String) -> Float = {
 
 effect fn log_evening(args: List[String]) -> Unit = {
   let flags = parse_flags(args)
-  let focus = ask_int(get_flag_int(flags, "focus"), "深い集中時間(分)", 0)
+  let focus = ask_int(get_flag_int(flags, "focus"), "深い集中時間(分)", 0)!
   let pain = get_flag_str(flags, "pain")
   let hunger = get_flag_bool(flags, "hunger-crash")
   let off_day = get_flag_bool(flags, "off-day")
@@ -1063,7 +1063,7 @@ effect fn log_evening(args: List[String]) -> Unit = {
   let work_hours = get_flag_float(flags, "work-hours")
   let steps = get_flag_int(flags, "steps")
 
-  var data = load_today()
+  var data = load_today()!
   data = set_field(data, "deep_work_min", value.int(focus))
 
   let pain_flag = match pain {
@@ -1099,7 +1099,7 @@ effect fn log_evening(args: List[String]) -> Unit = {
     some(s) => { data = set_field(data, "steps_total", value.int(s)) },
     none => {},
   }
-  save_today(data)
+  save_today(data)!
 }
 
 fn default_meal_time(meal_type: String) -> String =
@@ -1117,10 +1117,10 @@ effect fn log_meal(args: List[String]) -> Unit = {
     process.exit(1)
   }
   let flags = parse_flags(list.drop(args, 1))
-  let time_s = ask_str(get_flag_str(flags, "time"), meal_type + " の時刻", default_meal_time(meal_type))
+  let time_s = ask_str(get_flag_str(flags, "time"), meal_type + " の時刻", default_meal_time(meal_type))!
   let protein_ok = if get_flag_bool(flags, "protein-ok") then true
-    else prompt_bool("タンパク質 ≥ 20g 取れたか", true)
-  let carb = ask_str(get_flag_str(flags, "carb"), "主食量 (S/M/L)", "M")
+    else prompt_bool("タンパク質 ≥ 20g 取れたか", true)!
+  let carb = ask_str(get_flag_str(flags, "carb"), "主食量 (S/M/L)", "M")!
 
   let entry = value.object([
     ("time", value.string(time_s)),
@@ -1128,9 +1128,9 @@ effect fn log_meal(args: List[String]) -> Unit = {
     ("carb_size", value.string(carb)),
   ])
 
-  let data = load_today()
+  let data = load_today()!
   let updated = set_nested(data, "meals", meal_type, entry)
-  save_today(updated)
+  save_today(updated)!
 }
 
 effect fn log_session(args: List[String]) -> Unit = {
@@ -1140,8 +1140,8 @@ effect fn log_session(args: List[String]) -> Unit = {
     process.exit(1)
   }
   let flags = parse_flags(list.drop(args, 1))
-  let duration = ask_int(get_flag_int(flags, "duration"), "時間(分)", 30)
-  let rpe = ask_int(get_flag_int(flags, "rpe"), "RPE (1-10)", 5)
+  let duration = ask_int(get_flag_int(flags, "duration"), "時間(分)", 30)!
+  let rpe = ask_int(get_flag_int(flags, "rpe"), "RPE (1-10)", 5)!
   let time_s = get_flag_str(flags, "time") |> option.unwrap_or("")
   let strength_kind = get_flag_str(flags, "kind") |> option.unwrap_or("")
 
@@ -1156,9 +1156,9 @@ effect fn log_session(args: List[String]) -> Unit = {
     else with_time
 
   let entry = value.object(final_entries)
-  let data = load_today()
+  let data = load_today()!
   let updated = append_to_array(data, "sessions", entry)
-  save_today(updated)
+  save_today(updated)!
 }
 
 effect fn log_water(args: List[String]) -> Unit = {
@@ -1170,7 +1170,7 @@ effect fn log_water(args: List[String]) -> Unit = {
       process.exit(1)
     },
   }
-  let data = load_today()
+  let data = load_today()!
   let hydration = value.get(data, "hydration") |> option.unwrap_or(value.object([]))
   let prev_water = value.get_int(hydration, "water_ml") |> option.unwrap_or(0)
   let total = prev_water + ml
@@ -1178,7 +1178,7 @@ effect fn log_water(args: List[String]) -> Unit = {
     ok(v) => v, err(_) => hydration,
   }
   let updated = set_field(data, "hydration", updated_hyd)
-  save_today(updated)
+  save_today(updated)!
 }
 
 fn caffeine_mg_for(drink: String) -> Int =
@@ -1199,9 +1199,9 @@ effect fn log_caffeine(args: List[String]) -> Unit = {
     process.exit(1)
   }
   let flags = parse_flags(list.drop(args, 1))
-  let time_s = get_flag_str(flags, "time") |> option.unwrap_or(now_hhmm())
+  let time_s = get_flag_str(flags, "time") |> option.unwrap_or(now_hhmm()!)
 
-  let data = load_today()
+  let data = load_today()!
   let entry = value.object([
     ("time", value.string(time_s)),
     ("type", value.string(drink)),
@@ -1215,25 +1215,25 @@ effect fn log_caffeine(args: List[String]) -> Unit = {
     ok(v) => v, err(_) => hydration,
   }
   let updated = set_field(d1, "hydration", updated_hyd)
-  save_today(updated)
+  save_today(updated)!
 }
 
-fn now_hhmm() -> String = datetime.format(datetime.now(), "HH:mm")
+effect fn now_hhmm() -> String = datetime.format(datetime.now(), "HH:mm")
 
 effect fn log_bath(args: List[String]) -> Unit = {
   let flags = parse_flags(args)
-  let time_s = ask_str(get_flag_str(flags, "time"), "入浴時刻", "21:00")
-  let temp = ask_int(get_flag_int(flags, "temp"), "温度(℃)", 40)
-  let duration = ask_int(get_flag_int(flags, "duration"), "時間(分)", 12)
+  let time_s = ask_str(get_flag_str(flags, "time"), "入浴時刻", "21:00")!
+  let temp = ask_int(get_flag_int(flags, "temp"), "温度(℃)", 40)!
+  let duration = ask_int(get_flag_int(flags, "duration"), "時間(分)", 12)!
 
   let entry = value.object([
     ("time", value.string(time_s)),
     ("temp_c", value.int(temp)),
     ("duration_min", value.int(duration)),
   ])
-  let data = load_today()
+  let data = load_today()!
   let updated = set_field(data, "bath", entry)
-  save_today(updated)
+  save_today(updated)!
 }
 
 effect fn log_brush(args: List[String]) -> Unit = {
@@ -1243,16 +1243,16 @@ effect fn log_brush(args: List[String]) -> Unit = {
     process.exit(1)
   }
   let key = if when == "morning" then "brush_morning" else "brush_evening"
-  let data = load_today()
+  let data = load_today()!
   let updated = set_nested(data, "oral", key, value.bool(true))
-  save_today(updated)
+  save_today(updated)!
 }
 
 effect fn log_floss(args: List[String]) -> Unit = {
   let _ = args
-  let data = load_today()
+  let data = load_today()!
   let updated = set_nested(data, "oral", "floss", value.bool(true))
-  save_today(updated)
+  save_today(updated)!
 }
 
 effect fn log_light(args: List[String]) -> Unit = {
@@ -1260,7 +1260,7 @@ effect fn log_light(args: List[String]) -> Unit = {
   let morning = get_flag_int(flags, "outdoor-morning")
   let total = get_flag_int(flags, "outdoor-total")
 
-  var data = load_today()
+  var data = load_today()!
   match morning {
     some(m) => { data = set_field(data, "outdoor_morning_min", value.int(m)) },
     none => {},
@@ -1269,5 +1269,5 @@ effect fn log_light(args: List[String]) -> Unit = {
     some(t) => { data = set_field(data, "outdoor_total_min", value.int(t)) },
     none => {},
   }
-  save_today(data)
+  save_today(data)!
 }
