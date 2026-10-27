@@ -910,15 +910,15 @@ effect fn save_today(value: json.Value) -> Unit = {
   println("→ " + path)
 }
 
-fn set_field(data: json.Value, field: String, value: json.Value) -> json.Value =
-  match value.set_path(data, value.key(value.root(), field), value) {
+fn set_field(data: json.Value, field: String, new_value: json.Value) -> json.Value =
+  match value.set_path(data, value.key(value.root(), field), new_value) {
     ok(v) => v,
     err(_) => data,
   }
 
-fn set_nested(data: json.Value, parent: String, child: String, value: json.Value) -> json.Value = {
+fn set_nested(data: json.Value, parent: String, child: String, new_value: json.Value) -> json.Value = {
   let parent_val = value.get(data, parent) |> option.unwrap_or(value.object([]))
-  let updated_parent = match value.set_path(parent_val, value.key(value.root(), child), value) {
+  let updated_parent = match value.set_path(parent_val, value.key(value.root(), child), new_value) {
     ok(v) => v,
     err(_) => parent_val,
   }
